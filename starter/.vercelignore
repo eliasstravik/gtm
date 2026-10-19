@@ -1,0 +1,13 @@
+# A .vercelignore replaces .gitignore for `vercel deploy` from a laptop, so it repeats it and adds the generated workflow routes.
+.env*.local
+.gtm/
+.workflow-data/
+.vercel/
+.next/
+node_modules/
+.swc/
+.eve/
+.output/
+next-env.d.ts
+*.tsbuildinfo
+app/.well-known/workflow/

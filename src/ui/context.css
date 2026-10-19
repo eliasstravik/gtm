@@ -1,0 +1,35 @@
+/* Context: the files as a tree beside the selected one, rendered read-only; on phones a picker above it. */
+.context { display: grid; grid-template-columns: 240px minmax(0, 1fr); flex: 1; border-top: 1px solid var(--border); }
+.file-tree { position: sticky; top: 0; align-self: start; max-height: 100dvh; overflow-y: auto; padding: 12px 12px 40px; font-size: 13px; }
+.file-tree h2 { margin: 20px 8px 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.file-tree section:first-child h2 { margin-top: 4px; }
+.file-tree ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.file-tree a, .file-tree .dir { display: block; line-height: 28px; padding: 0 8px 0 calc(8px + var(--depth, 0) * 14px); border-radius: 6px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-tree a:hover, .file-tree a[aria-current] { background: var(--hover); color: var(--text); text-decoration: none; }
+.file-tree .dir { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+.doc { min-width: 0; padding: 20px 32px 64px; border-left: 1px solid var(--border); }
+.doc > .notice { padding: 0; }
+.doc-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; max-width: 72ch; margin-bottom: 24px; color: var(--muted); font-size: 13px; }
+.doc-head a:hover { color: var(--text); }
+.file-pick { display: none; }
+.md { max-width: 72ch; font-size: 15px; line-height: 1.75; overflow-wrap: break-word; text-wrap: pretty; }
+.md :is(h1, h2, h3, h4) { line-height: 1.35; text-wrap: balance; font-weight: 600; }
+.md h1 { font-size: 24px; letter-spacing: -0.015em; margin: 0 0 16px; }
+.md h2 { font-size: 18px; letter-spacing: -0.01em; margin: 40px 0 8px; }
+.md :is(h3, h4) { font-size: 15px; margin: 28px 0 4px; }
+.md > :first-child { margin-top: 0; }
+.md :is(p, ul, ol, pre, blockquote, table) { margin: 0 0 16px; }
+.md :is(ul, ol) { padding-left: 1.5em; }
+.md li::marker { color: var(--muted); }
+.md :is(li > ul, li > ol) { margin: 0; }
+.md a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.md a:hover { text-decoration-color: currentColor; }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+.md code { padding: 0.15em 0.35em; border-radius: 4px; background: var(--hover); font-size: 0.86em; }
+.md pre { padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-x: auto; line-height: 1.6; }
+.md pre code { padding: 0; background: none; }
+.md blockquote { padding-left: 16px; border-left: 2px solid var(--border); color: var(--muted); }
+.md table { display: block; width: max-content; max-width: 100%; overflow-x: auto; font-size: 14px; }
+.md :is(th, td) { position: static; padding: 6px 16px 6px 0; vertical-align: top; } .md th { background: none; color: var(--text); }
+.md img { max-width: 100%; }
+@media (max-width: 767px) { .context { display: block; } .file-tree { display: none; } .doc { border: 0; padding: 16px 12px 48px; } .file-pick { display: flex; width: 100%; margin-bottom: 16px; } .md { font-size: 16px; } }
