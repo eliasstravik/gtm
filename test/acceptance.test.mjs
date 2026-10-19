@@ -193,7 +193,7 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         }
         const workflows = await json("/api/gtm/workflows");
         assert.deepEqual(workflows.workflows, []);
-        assert.equal(workflows.runsUrl, null);
+        assert.equal(workflows.runsUrl, "/api/gtm/inspector");
         const runs = await json("/api/gtm/workflows/runs");
         assert.ok(Array.isArray(runs.data) && typeof runs.hasMore === "boolean", JSON.stringify(runs));
         assert.deepEqual(await json("/api/gtm/data"), { tables: [] });
@@ -294,6 +294,36 @@ export async function record(input: { name: string }) {
       const last = (await json("/api/gtm/workflows")).workflows.find((w) => w.name === "record")?.lastRun;
       assert.equal(last?.status, "completed", `the workflow's last run: ${JSON.stringify(last)}`);
       s.runId = run.id;
+    });
+
+    await t.test("the run inspector shows the runs and one run with its files under /api/gtm/inspector; the Console links there", async (st) => {
+      if (!s.runId) return st.skip("no run (the previous check failed)");
+      const { workflows, runsUrl } = await json("/api/gtm/workflows");
+      const w = workflows.find((x) => x.name === "record");
+      assert.deepEqual([w.file, w.sourceUrl, runsUrl], ["workflows/record.ts", null, "/api/gtm/inspector"]);
+      const run = (await json("/api/gtm/workflows/runs?workflow=record")).data.find((r) => r.id === s.runId);
+      assert.equal(run.url, `/api/gtm/inspector/run/${s.runId}`);
+      for (const p of [runsUrl, run.url]) {
+        const page = await get(p);
+        assert.equal(page.status, 200, `${p} → ${page.status}: ${page.text.slice(0, 300)}`);
+        assert.match(String(page.headers["content-type"]), /text\/html/, p);
+        const files = [...page.text.matchAll(/(?:href|src)="(\/api\/gtm\/inspector\/assets\/[^"]+)"/g)].map((m) => m[1]);
+        assert.ok(files.some((f) => f.endsWith(".css")) && files.some((f) => f.endsWith(".js")), `${p} links no files under the inspector: ${files}`);
+        for (const f of files) {
+          const r = await get(f);
+          assert.equal(r.status, 200, `${f} → ${r.status}`);
+          // Its stylesheet's fonts are served under the inspector's path too.
+          for (const [, font] of r.text.matchAll(/url\((\/[^)]+\.woff2)\)/g)) {
+            assert.ok(font.startsWith("/api/gtm/inspector/assets/"), `${f} loads ${font}`);
+            assert.equal((await get(font)).status, 200, font);
+          }
+        }
+      }
+      // Its page reads and changes runs through one RPC endpoint; on 127.0.0.1 both pass (waking a finished run is a no-op).
+      const rpc = (method) => get("/api/gtm/inspector/api/rpc", { method: "POST", body: { method, params: { runId: s.runId, resolveData: "none" } } });
+      const read = await rpc("fetchRun"), wake = await rpc("wakeUpRun");
+      assert.ok(read.status === 200 && read.text.includes(s.runId), `fetchRun → ${read.status}: ${read.text.slice(0, 300)}`);
+      assert.ok(wake.status === 200 && wake.text.includes("stoppedCount"), `wakeUpRun → ${wake.status}: ${wake.text.slice(0, 300)}`);
     });
 
     await t.test("the table and the row show in Data", async () => {
@@ -521,6 +551,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       env: cleanEnv({
         VERCEL_ENV: "production", VERCEL_DEPLOYMENT_ID: "dpl_test", VERCEL_AUTOMATION_BYPASS_SECRET: "s",
         DATABASE_URL: s.dbUrl, NODE_EXTRA_CA_CERTS: stub.caFile,
+        VERCEL_GIT_PROVIDER: "github", VERCEL_GIT_REPO_OWNER: "acme", VERCEL_GIT_REPO_SLUG: "gtm-acme", VERCEL_GIT_COMMIT_SHA: "0a1b2c3",
       }),
     });
     try {
@@ -537,6 +568,11 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       assert.deepEqual([database.mode, database.label], ["link", "Open in Vercel"], JSON.stringify(database));
       assert.ok(database.url.startsWith("https://vercel.com/d?to=") && database.url.includes("%2Fstores"), database.url);
       refused(await request(START_PORT, "/api/gtm/database/open", { method: "POST", host, body: {} }), "hosted Open database POST");
+      // Hosted, runs open in Vercel's dashboard (its team and project picker without GTM_VERCEL_TOKEN), sources on GitHub.
+      assert.equal((await at("/api/gtm/inspector")).status, 404, "the run inspector is local only");
+      const hosted = (await at("/api/gtm/workflows")).json(), record = hosted.workflows.find((w) => w.name === "record");
+      assert.match(hosted.runsUrl, /^https:\/\/vercel\.com\/d\?to=%2F%5Bteam%5D%2F%5Bproject%5D%2Fworkflows/);
+      if (s.runId) assert.equal(record?.sourceUrl, "https://github.com/acme/gtm-acme/blob/0a1b2c3/workflows/record.ts");
       const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
       const jwt = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ aud: host, bypass: "s", iat: 1, sub: "protection-bypass-automation" })}.sig`;
       const carriers = [
@@ -547,7 +583,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       ];
       const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=context/company.md",
         "/api/gtm/workflows", "/api/gtm/workflows/runs", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv",
-        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x", "/api/gtm/database"];
+        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x", "/api/gtm/inspector", "/api/gtm/database"];
       for (const [how, send] of carriers) for (const p of targets) refused(await send(p), `${how} on ${p}`);
     } finally {
       await next.stop();
@@ -652,6 +688,32 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
         assert.equal(r.status, 403, `start on ${BOX} ${JSON.stringify(headers)} → ${r.status}: ${r.text.slice(0, 300)}`);
       }
       if (s.runId) refused(await get(`/api/gtm/runs/${s.runId}`, { host: BOX }), `runs on ${BOX}`);
+      // The run inspector reads on that host, but every RPC that changes runs or hands out secrets is refused.
+      if (s.runId) {
+        assert.equal((await get(`/api/gtm/inspector/run/${s.runId}`, { host: BOX })).status, 200, `the inspector on ${BOX}`);
+        const rpc = (body, headers) => get("/api/gtm/inspector/api/rpc", { method: "POST", host: BOX, headers, body });
+        // A read answers { success, data }; `npm run build` above emptied the local run store, so the list may be empty.
+        const answered = (r, what) => assert.ok(r.status === 200 && r.text.includes("data") && !r.text.includes("error"),
+          `${what} on ${BOX} → ${r.status}: ${r.text.slice(0, 300)}`);
+        answered(await rpc({ method: "fetchRuns", params: { params: { limit: 5 } } }), "fetchRuns (JSON)");
+        for (const method of ["recreateRun", "cancelRun", "bulkCancelRuns", "reenqueueRun", "wakeUpRun", "resumeHook", "runHealthCheck",
+          "fetchHookToken", "getEncryptionKeyForRun", "noSuchMethod"]) {
+          const r = await rpc({ method, params: { runId: s.runId, runIds: [s.runId] } });
+          refused(r, `${method} on ${BOX}`);
+          assert.match(r.text, /127\.0\.0\.1 or localhost/, `${method}: the refusal says where it works`);
+        }
+        // CBOR, as the inspector's page sends it: a read passes; a read and then a write under the same key does not.
+        const text = (x) => Buffer.concat([Buffer.from([0x60 + x.length]), Buffer.from(x)]);
+        const cbor = { "content-type": "application/cbor" };
+        answered(await rpc(Buffer.concat([Buffer.from([0xa1]), text("method"), text("fetchRuns")]), cbor), "fetchRuns (CBOR)");
+        refused(await rpc(Buffer.concat([Buffer.from([0xa2]), text("method"), text("fetchRuns"), text("method"), text("recreateRun")]), cbor),
+          `CBOR with a second method on ${BOX}`);
+      }
+      // The Workflow SDK's own run endpoints answer only this server's queue on 127.0.0.1.
+      for (const [what, opts] of [[`Host ${BOX}`, { host: BOX }], [`X-Forwarded-Host ${BOX}`, { headers: { "x-forwarded-host": BOX } }]]) {
+        const r = await get("/.well-known/workflow/v1/flow", { method: "POST", body: {}, ...opts });
+        assert.equal(r.status, 404, `the workflow flow route with ${what} → ${r.status}`);
+      }
       assert.equal(await runsCount(), before);
       refused(await get("/context", { host: "evil.test" }), "evil.test still refused");
       // Not this machine's Tailscale name (or no Tailscale at all): Studio is not shared there, the answer says where it opens.

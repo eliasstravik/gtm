@@ -61,10 +61,13 @@ async function unprotected(host: string): Promise<boolean> {
 }
 
 function local(req: Request): Response | undefined {
-  const host = requestHost(req);
+  const host = requestHost(req), name = (h: string) => h.split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
   if (![...LOOPBACK_HOSTS, ...allowedHosts()].includes(host.replace(/:\d+$/, ""))) {
     return refuse("This host is not allowed. To admit a private hostname, add it to GTM_ALLOWED_HOSTS.");
   }
+  // The Workflow SDK's run endpoints have no check of their own; only this dev server's queue calls them, on 127.0.0.1.
+  const loopback = [host, req.headers.get("x-forwarded-host") ?? host].every((h) => LOOPBACK_HOSTS.includes(name(h)));
+  if (!loopback && new URL(req.url).pathname.startsWith("/.well-known/workflow/")) return refuse("Not found.", 404);
   if (req.method === "GET" || req.method === "HEAD") return undefined;
   const site = req.headers.get("sec-fetch-site"), origin = req.headers.get("origin");
   const originHost = origin === null ? host : URL.canParse(origin) ? new URL(origin).host.toLowerCase() : ""; // "null" or junk
@@ -73,8 +76,8 @@ function local(req: Request): Response | undefined {
 }
 
 /**
- * The Next.js proxy guard (plan §3). Local: loopback or GTM_ALLOWED_HOSTS only, and no cross-site writes, on every
- * route. Hosted: bypass-carrying requests reach only their own routes, and every other page and endpoint answers
+ * The Next.js proxy guard (plan §3). Local: loopback or GTM_ALLOWED_HOSTS only (/.well-known/workflow/* loopback
+ * only), and no cross-site writes, on every route. Hosted: bypass-carrying requests reach only their own routes, and every other page and endpoint answers
  * 503 while an anonymous request gets past Vercel's login. Returns a response to stop, or undefined to continue.
  */
 export async function gtmProxy(req: Request): Promise<Response | undefined> {

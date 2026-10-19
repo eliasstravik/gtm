@@ -149,14 +149,15 @@ function alive(pid) {
 }
 
 /**
- * Raw HTTP to 127.0.0.1:<port> through node:http (fetch cannot set Host). `body` objects are sent as JSON.
+ * Raw HTTP to 127.0.0.1:<port> through node:http (fetch cannot set Host). `body` objects are sent as JSON, strings
+ * and Buffers as they are (JSON unless `headers` name another content-type).
  * Never follows redirects. Resolves with { status, headers, text, json() }.
  */
 export function request(port, pathname, { method = "GET", host = `127.0.0.1:${port}`, headers = {}, body, timeout = 2 * MIN } = {}) {
   return new Promise((resolve, reject) => {
-    const data = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
+    const data = body === undefined ? undefined : typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body);
     const h = { host, ...headers };
-    if (data !== undefined) Object.assign(h, { "content-type": "application/json", "content-length": Buffer.byteLength(data) });
+    if (data !== undefined) Object.assign(h, { "content-type": h["content-type"] ?? "application/json", "content-length": Buffer.byteLength(data) });
     const req = http.request({ host: "127.0.0.1", port, path: pathname, method, headers: h, timeout }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));

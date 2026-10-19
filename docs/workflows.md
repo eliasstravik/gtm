@@ -19,7 +19,8 @@ optional and none changes how the workflow runs. The workflow's page in the Cons
   `diagram`, the business steps as `{ nodes: [{ id, label, kind, explanation, details }], edges: [{ source,
   target, label }] }`. `kind` is `input`, `action`, `decision` or `output`; a decision's edges carry labels ("Yes",
   "No"); `details` is a few short `{ name: text }` facts (provider, caching, limits). Write it for the GTM team,
-  not as code; update it in the same change as the workflow.
+  not as code; update it in the same change as the workflow. Hosted from GitHub, **View source** opens the
+  workflow's file at the deployed commit; locally **Copy file path** copies it.
 - **Runs**: this workflow's runs.
 - **Data**: the tables it writes, named in `tables` (schema `public`).
 - **Connections**: the `.env.example` names it reads, in `connections`, set or missing here.
@@ -43,11 +44,17 @@ export const workflows = {
 } satisfies Registry;
 ```
 
+The Workflows list shows each workflow with a dot for its newest run (hover for when; hollow: never run) and
+searches names, descriptions, tables and connections. Runs lists every run; a run's steps, inputs, outputs
+and errors are in the Workflow SDK's run inspector: **Open in Workflow** locally (`/api/gtm/inspector`, on the
+same dev server), **Open in Vercel** hosted (the project's Workflows page in Vercel's dashboard). The local
+inspector can replay or cancel a run, but only on `127.0.0.1`/`localhost`.
+
 ## Results and runs
 
 - A workflow writes its lasting results to its own tables in `public` through `db()` (data.md).
-- Runs live only in the Workflow SDK's run store (`.workflow-data/` locally; 7 days on Vercel Pro). There is
-  no run-history table; the Workflows view shows what the store keeps.
+- Runs live only in the Workflow SDK's run store (`.next/workflow-data/` locally, which a local `next build`
+  wipes; 7 days on Vercel Pro). There is no run-history table; the Workflows view shows what the store keeps.
 - Schedules: `vercel.json` crons whose path is `/api/gtm/cron/<name>`. Vercel Cron runs them in production
   only, with `CRON_SECRET`; the route refuses when it is unset. A cron run gets no input.
   Locally nothing fires on its own; start it with
