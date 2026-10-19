@@ -1,6 +1,6 @@
-import { existsSync, lstatSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, PRODUCTION_DATABASE, value } from "../shared/env.js";
@@ -33,6 +33,7 @@ export async function check(args: string[]): Promise<void> {
   const r: Report = { problems: [], warnings: [], info: [] };
   layout(dir, r);
   registry(dir, r);
+  for (const [what, fix] of aiRule(workflowCode(dir))) problem(r, what, fix);
   const names = [...(read(dir, ".env.example") ?? "").matchAll(/^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=/gm)].map((m) => m[1]);
   r.info.push(`Connections (.env.example):${names.length ? "" : " none listed"}`, ...names.map((n) => `  ${n}: ${value(n) ? "set" : "missing"} here`));
   const link = readJson(join(dir, ".vercel", "project.json"));
@@ -90,6 +91,27 @@ function registry(dir: string, r: Report): void {
   if (!/export\s+(?:const|let|var)\s+workflows\b|export\s*\{[^}]*\bworkflows\b/.test(src)) problem(r, "workflows/index.ts does not export `workflows`.", fix);
   for (const [, spec] of src.matchAll(/(?:^|[\s;])(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\sfrom\s*)?["']([^"']+)["']/g))
     if (!resolves(dir, spec)) problem(r, `workflows/index.ts imports "${spec}", which does not resolve.`, "fix the path, create the file, or `npm install` the package");
+}
+
+const AI_IMPORT = /(?:^|[\s;])(?:import(?!\s+type\b)\s*(?:[^'";]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*)["']((?:ai|@ai-sdk\/[^"'/]+)(?:\/[^"']*)?)["']/g;
+/** A Gateway-style id or a bare provider id in quotes, except as a stage's own `model:`. */
+const MODEL_ID = /(\bmodel\s*:\s*)?["'`]((?:anthropic|openai|google|xai|mistral|meta|deepseek|groq|perplexity|cohere|bedrock|vertex|amazon|alibaba|moonshotai|zai)\/[\w.:-]+|(?:claude|gpt|gemini)-[\w.-]+)["'`]/g;
+
+/** Every AI call in a workflow is agent(): no AI SDK imports and no model ids in workflows/ (GTM_MODEL picks the model). */
+export function aiRule(files: [string, string][]): [string, string][] {
+  const found: [string, string][] = [];
+  const fix = "call agent() from @eliasstravik/gtm/ai for every AI call, one-shot (no tools) or tool-using; custom tools take `tool` from there too (`npx @eliasstravik/gtm docs workflows`)";
+  for (const [file, src] of files) {
+    for (const [, spec] of src.matchAll(AI_IMPORT)) found.push([`${file} imports "${spec}".`, fix]);
+    for (const [, own, id] of src.matchAll(MODEL_ID)) if (!own) found.push([`${file} names the model "${id}".`,
+      "remove it; GTM_MODEL picks the model, and a stage that truly needs another one sets agent()'s `model`"]);
+  }
+  return found;
+}
+
+function workflowCode(dir: string): [string, string][] {
+  const files = (() => { try { return readdirSync(join(dir, "workflows"), { recursive: true }) as string[]; } catch { return []; } })();
+  return files.filter((f) => /\.[cm]?[jt]sx?$/.test(f)).map((f) => [`workflows/${f.split(sep).join("/")}`, read(dir, join("workflows", f)) ?? ""]);
 }
 
 function resolves(dir: string, spec: string): boolean {

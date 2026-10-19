@@ -10,7 +10,8 @@ development data and never moves to production.
 
 ## `agent()` backends
 
-Hosted, `agent()` always uses AI Gateway (the deployment's OIDC token, or `AI_GATEWAY_API_KEY`), with every
+Every AI call in a workflow, one-shot or tool-using, is `agent()` (workflows.md, AI steps), so these are its only
+paths: workflow code never calls the AI SDK or a provider itself and never names a model id. Hosted, `agent()` always uses AI Gateway (the deployment's OIDC token, or `AI_GATEWAY_API_KEY`), with every
 model and tool call a step. On a laptop the first match wins, per call:
 
 1. AI Gateway, when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is set. A pulled OIDC token expires; the error
@@ -18,9 +19,17 @@ model and tool call a step. On a laptop the first match wins, per call:
 2. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, through their AI SDK providers.
 3. The headless `claude -p` or `codex exec` the person is already signed into: `GTM_AGENT_BACKEND` (`claude` or
    `codex`; `init` writes it to `.env.local` for the agent that ran it), else whichever is on PATH, `claude`
-   first. The whole stage runs as one step. MCP servers and web tools carry over; custom tools, streaming or
-   messages need path 1 or 2, and the error names the variables that enable them. The CLI gets only an
-   allowlisted environment, never the app's secrets, and uses its own default model (`GTM_MODEL` is ignored).
+   first. The whole stage runs as one step. MCP servers, web tools and skills carry over; custom tools need path
+   1 or 2, and the error names the variables that enable them. The CLI gets only an allowlisted environment,
+   never the app's secrets. A stage's `model` (else `GTM_MODEL`) goes to the CLI when it is that CLI's family:
+   `anthropic/…` as `claude --model`, `openai/…` as `codex -m`; any other model, or none, leaves the CLI on its
+   own default. `reasoning` `none` and `minimal` run as `low` (neither CLI's default model has them).
+   `maxSteps` does not apply.
+
+`maxUsd` counts what is reported: on AI Gateway each call's cost plus tool costs; on an API key only tool costs
+(providers report no price). After the call that reaches it, one last call without tools writes up the result.
+On `claude` it is `--max-budget-usd`, which stops without a result, so the stage fails; `codex` reports no cost
+and has no cap. A model call retries itself up to twice inside its step; the run does not retry it again.
 
 ## Models
 

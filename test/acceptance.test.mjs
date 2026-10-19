@@ -186,13 +186,11 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         assert.ok(ctx, JSON.stringify(context));
         assert.deepEqual(ctx.files.map((f) => f.path), [], "an empty context/ lists nothing under Context");
         for (const g of context.groups) assert.ok(["Context", "Skills"].includes(g.name) && Array.isArray(g.files), JSON.stringify(g));
-        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files.map((f) => f.path), ["AGENTS.md"], "AGENTS.md is under Skills (§4)");
-        const agents = await json("/api/gtm/context/file?path=AGENTS.md");
-        assert.equal(agents.path, "AGENTS.md");
-        assert.ok(agents.markdown.includes("<!-- BEGIN:gtm -->"));
-        assert.equal(agents.githubUrl, null);
-        const unlisted = await get("/api/gtm/context/file?path=package.json");
-        assert.ok(unlisted.status >= 400 && unlisted.status < 500, `a file the listing does not return → ${unlisted.status}`);
+        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files, [], "no skills yet (.gitkeep is no skill)");
+        for (const p of ["package.json", "AGENTS.md"]) {
+          const unlisted = await get(`/api/gtm/context/file?path=${p}`);
+          assert.ok(unlisted.status >= 400 && unlisted.status < 500, `${p}, which the listing does not return → ${unlisted.status}`);
+        }
         const workflows = await json("/api/gtm/workflows");
         assert.deepEqual(workflows.workflows, []);
         assert.equal(workflows.runsUrl, null);
@@ -464,7 +462,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
         ["query parameter", (p) => at(`${p}${p.includes("?") ? "&" : "?"}x-vercel-protection-bypass=s`)],
         ["bypass cookie", (p) => at(p, { cookie: `_vercel_jwt=${jwt}` })],
       ];
-      const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=AGENTS.md",
+      const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=context/company.md",
         "/api/gtm/workflows", "/api/gtm/workflows/runs", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv",
         "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x"];
       for (const [how, send] of carriers) for (const p of targets) refused(await send(p), `${how} on ${p}`);
@@ -658,7 +656,7 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
     t.diagnostic(`eve build --skip-sandbox-prewarm: exit ${eveBuild.code} (log ${eveBuild.log})${eveBuild.code ? `\n${tail(eveBuild.output, 1500)}` : ""}`);
   });
 
-test("7.9 init --example builds, gtm check passes and the example runs; the docs recipes install, migrate, build and run",
+test("7.9 init --example builds, gtm check passes and the example runs; the docs recipes install, migrate, build and run; an agent() skill",
   { timeout: 40 * MIN }, async (t) => {
     if (!s.cli) return t.skip("no CLI (packing failed)");
     await stopDev();
@@ -669,7 +667,12 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
       assert.ok(ready(), "init did not install the package");
       assertOk(await npm(["run", "build"]), "npm run build with the example");
       assertOk(await gtm(["check"]), "gtm check with the example");
-      await startDev();
+      // A stand-in `claude` that replies with the prompt it got, so agent()'s CLI path runs with no network.
+      const fakeBin = path.join(s.work, "fake-bin");
+      fs.mkdirSync(fakeBin, { recursive: true });
+      fs.writeFileSync(path.join(fakeBin, "claude"), "#!/usr/bin/env node\nlet t = \"\"; process.stdin.on(\"data\", (d) => (t += d)).on(\"end\", () =>\n" +
+        "  console.log(JSON.stringify({ result: `${t}\\nARGS ${process.argv.slice(2).join(\" \")}`, total_cost_usd: 0, num_turns: 1 })));\n", { mode: 0o755 });
+      await startDev({ PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`, GTM_AGENT_BACKEND: "claude" });
       const example = assertOk(await gtm(["run", "example-import"], { env: { GTM_PORT: String(PORT) } }), "gtm run example-import");
       assert.match(example.stdout, /"saved":\s*3/, `the example saved its three samples:\n${example.output}`);
       assert.ok((await json("/api/gtm/data")).tables.some((x) => x.name === "example_companies"), "example_companies shows in Data");
@@ -684,6 +687,18 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
         imports += `${readme.match(/import \{ \w+ \} from "\.\/[\w-]+";/)[0]}\n`;
         entries += `${readme.match(/```ts\n([\s\S]*?)\n```/)[1]}\n`;
       }
+      // A company skill (layout.md) and a workflow stage that loads it.
+      write(".agents/skills/email-copywriting/SKILL.md", "---\nname: email-copywriting\ndescription: Writes cold emails in Demo's voice.\n---\n\n# Email copywriting\n\nKeep it under 90 words.\n");
+      write("workflows/skill-check.ts", `import { agent } from "@eliasstravik/gtm/ai";
+
+/** Acceptance check 7.9: an agent() stage with company skills. */
+export async function skillCheck(input: { skills: string[] }) {
+  "use workflow";
+  return (await agent({ name: "skillCheck", instructions: "Follow the skill.", prompt: "Draft one line.", skills: input.skills, model: "anthropic/claude-sonnet-5.5" })).value;
+}
+`);
+      imports += `import { skillCheck } from "./skill-check";\n`;
+      entries += `"skill-check": skillCheck,\n`;
       const registry = read("workflows/index.ts");
       write("workflows/index.ts", imports + registry.replace("export const workflows = {\n", `export const workflows = {\n${entries}`));
       write("vercel.json", JSON.stringify({ crons: [{ path: "/api/gtm/cron/weekly-new-companies", schedule: "0 7 * * 1" }] }, null, 2));
@@ -702,7 +717,23 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
       assert.match(weekly.stdout, /"companies":\s*2/, weekly.output);
       const tables = (await json("/api/gtm/data")).tables.map((x) => x.name);
       for (const table of ["companies", "company_profiles", "weekly_new_companies"]) assert.ok(tables.includes(table), `${table} in Data: ${tables}`);
+
+      const skills = (await json("/api/gtm/context")).groups.find((g) => g.name === "Skills").files;
+      assert.deepEqual(skills, [{ path: ".agents/skills/email-copywriting/SKILL.md", title: "email-copywriting", description: "Writes cold emails in Demo's voice." }]);
+      const skilled = assertOk(await gtm(["run", "skill-check", "--input", JSON.stringify({ skills: ["email-copywriting"] })], { env: { GTM_PORT: String(PORT) } }), "gtm run skill-check");
+      assert.match(skilled.stdout, /Follow the skill\.\\n\\n# Email copywriting\\n\\nKeep it under 90 words\./, `the skill's body joins the instructions:\n${skilled.stdout}`);
+      assert.doesNotMatch(skilled.stdout, /description: Writes/, "without its front matter");
+      assert.match(skilled.stdout, /ARGS .*--model claude-sonnet-5-5/, "the stage's model goes to claude");
+      const missing = await gtm(["run", "skill-check", "--input", JSON.stringify({ skills: ["no-such-skill"] })], { env: { GTM_PORT: String(PORT) } });
+      assert.notEqual(missing.code, 0, missing.output);
+      assert.match(missing.output, /No skill \\?"no-such-skill\\?"/, missing.output);
       await stopDev();
+      // Every AI call goes through agent(): gtm check flags the AI SDK in workflow code.
+      write("workflows/direct.ts", `import { generateText } from "ai";\nexport const model = "openai/gpt-6";\nexport { generateText };\n`);
+      const flagged = await gtm(["check"]);
+      assert.notEqual(flagged.code, 0, flagged.output);
+      assert.match(flagged.output, /workflows\/direct\.ts imports "ai"[\s\S]*workflows\/direct\.ts names the model "openai\/gpt-6"/, flagged.output);
+      fs.rmSync(file("workflows/direct.ts"));
       // enrich-companies needs a model to run; its build (types included) is checked here.
       assertOk(await npm(["run", "build"]), "npm run build with the recipes");
       assertOk(await gtm(["check"]), "gtm check with the recipes");
