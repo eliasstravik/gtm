@@ -18,7 +18,7 @@ const icons = {
  * Connections: each key `.env.example` lists, by its comment, and whether it is set here, never its value. Add or
  * Replace sends one value: locally into .env.local, hosted into Vercel's Production env, which then redeploys.
  */
-export function ConnectionsView({ only }: { only?: string[] }) {
+export function ConnectionsView({ only }: { only?: string[] | null }) {
   // Keys saved from this page: "getting ready" locally until the server reads them, "going live" until the redeploy is.
   const [saved, setSaved] = useState<string[]>([]), [note, setNote] = useState("");
   const [editing, setEditing] = useState<{ c: Connection; verb: string } | null>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -28,12 +28,13 @@ export function ConnectionsView({ only }: { only?: string[] }) {
   const { reload, data } = state;
   useEffect(() => onReleaseSettled(() => { setSaved([]); reload(); }), [reload]);
   if (!data) return <Status state={state} />;
-  const { save } = data, connections = only ? data.connections.filter((c) => only.includes(c.name)) : data.connections, n = connections.length, local = save.mode === "local", canSave = local || save.mode === "hosted";
+  const { save } = data, connections = only !== undefined ? data.connections.filter((c) => only?.includes(c.name)) : data.connections, n = connections.length, local = save.mode === "local", canSave = local || save.mode === "hosted";
   const where = data.environment === "local" ? "on this computer" : data.environment === "preview" ? "in Preview" : "in Production";
   const stateOf = (c: Connection) => (saved.includes(c.name) && !(local && c.set) ? "saved" : c.set ? "set" : "missing");
   const labels = { set: "Set", missing: "Missing", saved: local ? "Saved, getting ready" : "Saved, going live" };
   const missing = connections.filter((c) => stateOf(c) === "missing").length, pending = connections.some((c) => stateOf(c) === "saved");
-  const summary = only && !only.length ? "This workflow doesn't list the keys it uses yet."
+  // A workflow's tab (`only`): null when its registry entry names no keys at all, [] when it uses none.
+  const summary = only === null ? "This workflow doesn't list the keys it uses yet." : only && !only.length ? "This workflow uses no keys."
     : !n ? (only ? "None of the keys this workflow uses is in .env.example yet." : "No connections yet. Your agent lists them in .env.example.")
     : missing ? `${missing} of ${n} ${n === 1 ? "key isn't" : "keys aren't"} set ${where}.`
     : pending ? `Your workflows can use the keys you saved ${local ? "in a few seconds" : "in about a minute"}.`
@@ -47,7 +48,7 @@ export function ConnectionsView({ only }: { only?: string[] }) {
   };
   return (
     <div className="connections-view">
-      {only ? <div className="title-row"><p role="status">{summary}</p><Link className="button" href="/connections">All connections</Link></div> : <>
+      {only !== undefined ? <div className="title-row"><p role="status">{summary}</p><Link className="button" href="/connections">All connections</Link></div> : <>
         <div className="title-row">
           <h1>Connections</h1>
           {save.mode === "link" && <a className="button" href={save.settingsUrl} target="_blank" rel="noreferrer">Open in Vercel</a>}
@@ -56,7 +57,7 @@ export function ConnectionsView({ only }: { only?: string[] }) {
       </>}
       <div className="page">
         <Status state={state} />
-        {only && !only.length && <p className="notice">Ask your agent to declare this workflow's connections, then they show here with whether each is set.</p>}
+        {only === null && <p className="notice">Ask your agent to declare this workflow's connections, then they show here with whether each is set.</p>}
         {data.tokenWarning && <p className="banner warn">{data.tokenWarning}</p>}
         {save.mode === "off" && <p className="banner">{save.reason}</p>}
         {note && <p className="banner" role="status">{note}</p>}

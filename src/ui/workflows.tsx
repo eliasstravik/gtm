@@ -121,7 +121,7 @@ export function WorkflowView({ name: segment }: { name: string }) {
       </nav>
       {view === "runs" ? <RunsView workflow={name} />
         : view === "data" ? <DataView tables={w.tables ?? []} />
-        : view === "connections" ? <ConnectionsView only={w.connections ?? []} />
+        : view === "connections" ? <ConnectionsView only={w.connections ?? null} />
         : <DiagramView diagram={w.diagram} summary={<>
           {w.description && <p className="diagram-description">{w.description}</p>}
           <p className="diagram-trigger">Starts: {scheduleText(w.schedule) ?? "Manual"}</p>
