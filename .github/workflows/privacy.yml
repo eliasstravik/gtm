@@ -20,9 +20,12 @@ jobs:
   scan:
     runs-on: ubuntu-24.04
     steps:
+      # A pull request is judged by its own commits, not the test merge GitHub makes for it (that one is authored with
+      # the account's GitHub email); the real merge is checked when it lands on main.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install gitleaks
         run: |
