@@ -1,6 +1,6 @@
 {
   "name": "@eliasstravik/gtm",
-  "version": "0.0.1",
+  "version": "0.0.2-rc.1",
   "description": "A company's go-to-market work as an ordinary Next.js project: context, workflows, a Console and an optional Slack agent.",
   "license": "MIT",
   "repository": {
