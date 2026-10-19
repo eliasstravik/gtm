@@ -2,6 +2,7 @@
 # is stored anywhere, and npm attaches provenance. A tag with a pre-release part (v0.0.2-rc.1) goes to `next`, any
 # other (v0.0.2) to `latest`. The tag must match package.json's version. Set up once with
 # `npm trust github @eliasstravik/gtm --repo eliasstravik/gtm --file release.yml --allow-publish` (README, Releasing).
+# It never commits or pushes; a workflow that does uses the noreply identity in AGENTS.md (Public repo).
 name: release
 
 on:

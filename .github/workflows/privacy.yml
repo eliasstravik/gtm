@@ -40,7 +40,7 @@ jobs:
       # Only the commits are printed, never the addresses, since CI logs are public.
       - name: Commit emails
         run: |
-          bad=$(git log --all --format='%h %ae %ce' | awk '{ for (i = 2; i <= 3; i++) if ($i !~ /^([0-9]+\+)?[A-Za-z0-9-]+@users\.noreply\.github\.com$/ && $i != "noreply@github.com") { print $1; next } }')
+          bad=$(git log --all --format='%h %ae %ce' | awk '{ for (i = 2; i <= 3; i++) if ($i !~ /^([0-9]+\+)?[A-Za-z0-9-]+(\[bot\])?@users\.noreply\.github\.com$/ && $i != "noreply@github.com") { print $1; next } }')
           if [ -n "$bad" ]; then echo "Commits whose author or committer email is not a GitHub noreply address:"; echo "$bad"; exit 1; fi
 
       - name: Commit messages

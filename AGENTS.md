@@ -11,8 +11,13 @@ descriptions and comments, reviews, issues, releases and CI logs. Never put any 
 - secrets: keys, tokens, passwords, bypass or webhook secrets, connection strings with credentials;
 - real hostnames and URLs of private machines or deployments: Tailscale names (`*.ts.net`) and addresses
   (CGNAT `100.x`), private IPs, `*.vercel.app` deployments, VM names, preview links;
-- email addresses: commit authors and committers use the GitHub noreply address (this repo's `git config user.email`),
-  trailers use `noreply` addresses;
+- email addresses: every commit's author and committer is a GitHub noreply address, which CI enforces. On this
+  machine that is the repo's `git config user.email` (`218792529+eliasstravik@users.noreply.github.com`, shared by every
+  worktree; never override it per worktree or with `GIT_AUTHOR_EMAIL`). A merge on GitHub gets the account's
+  email unless "Keep my email addresses private" is on, so merge with
+  `gh pr merge --squash --author-email 218792529+eliasstravik@users.noreply.github.com`. A workflow that commits sets
+  `github-actions[bot]` and `41898282+github-actions[bot]@users.noreply.github.com` (none does today). Trailers use
+  `noreply` addresses;
 - customer or company data: names, ICPs, personas, leads, pipeline, run results, Slack, Vercel or GitHub IDs of a
   real workspace;
 - local paths (home folders on Linux, macOS or Windows) and links to local reports or files.
