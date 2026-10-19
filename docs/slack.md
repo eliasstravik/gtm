@@ -52,7 +52,9 @@ Only full members of the company's Slack. Every eve entry hook (`onAppMention`, 
 - Repo edits go through eve's git tooling with GitHub via Vercel Connect: a connector named `gtm` (uid
   `github/gtm`, which `agent/tools/github.ts` names), made with `vercel connect create github --name gtm` in the
   linked project; a person finishes it in the browser and installs its GitHub app on the project's own repo
-  (Contents: read & write). After the yes the agent commits and pushes to `main`, and Vercel redeploys.
+  (Contents: read & write). After the yes the agent commits the staged change straight to `main` with
+  `gh-signed-commit`, as that GitHub app (a verified bot commit), and Vercel redeploys. Plain `git push` is
+  refused: on Pro, Vercel deploys a private repo's commits only when their author is a team member or a bot.
 - The start-run tool calls `POST /api/gtm/start/<workflow>` with the automation bypass header, so the run
   lives in the app and shows in the cockpit (an in-process start would run in eve's own service and not
   show). The tool reads `VERCEL_AUTOMATION_BYPASS_SECRET` and `VERCEL_PROJECT_PRODUCTION_URL` from the deployment.

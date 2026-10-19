@@ -172,12 +172,14 @@ async function saveHosted(s: Session, name: string, v: string): Promise<{ ok: tr
   if (project.autoAssignCustomDomains === false) {
     return { ok: true, status: "Saved, but production is pinned by a rollback, so nothing was redeployed. Undo the rollback in Vercel to apply it." };
   }
-  const { deployments = [] } = await vercel<{ deployments?: Deployment[] }>(s.token, `/v6/deployments?projectId=${id}&target=production&limit=5&${team}`);
-  // Even a build already in flight keeps the old value (spike 1d), so the newest usable one is redeployed whatever its state.
-  const newest = deployments.find((d) => !["ERROR", "CANCELED", "DELETED"].includes(d.readyState ?? ""));
+  const { deployments = [] } = await vercel<{ deployments?: Deployment[] }>(s.token, `/v6/deployments?projectId=${id}&target=production&limit=10&${team}`);
+  // Even a build already in flight keeps the old value (spike 1d), so the newest deployable one is redeployed whatever its
+  // state. ERROR, CANCELED, DELETED and BLOCKED (a git commit Vercel refused) ones can never deploy again.
+  const newest = deployments.find((d) => ["READY", "BUILDING", "INITIALIZING", "QUEUED"].includes(d.readyState ?? ""));
   if (!newest) return { ok: true, status: "Saved. There is no production deployment to redeploy yet; the next one uses it." };
   const created = await vercel<{ url: string; readyState?: string }>(s.token, `/v13/deployments?${team}`,
-    { name: project.name, deploymentId: newest.uid, target: "production" });
+    { name: project.name, deploymentId: newest.uid, target: "production" }).catch((e: Error) => e);
+  if (created instanceof Error) return { ok: true, status: `Saved, but the redeploy failed: ${created.message} Redeploy production in Vercel to apply it.` };
   return { ok: true, status: `Saved. Production is redeploying (${(created.readyState ?? "queued").toLowerCase()}).`,
     deploymentUrl: `https://${created.url}` };
 }

@@ -21,11 +21,11 @@ ordinary Next.js app on `@eliasstravik/gtm`. Only full members of the company's 
 
 ## Changing the repo
 
-- Edit in the checkout, check the change as `AGENTS.md` says, and commit with bash (`git add`, `git commit`), naming
-  in the message who asked in Slack.
-- Before pushing, post in the thread which files change and why. Then push with the `github` tool:
-  `git push origin HEAD:main`. The push waits for the requester's approval; after it, Vercel redeploys production
-  from `main`. Never open pull requests, force-push or push anywhere but `main`.
+- Edit in the checkout, check the change as `AGENTS.md` says, and stage it with bash (`git add`).
+- Before committing, post in the thread which files change and why. Then commit straight to `main` with the
+  `github` tool: `gh-signed-commit --repo <owner/name> --branch main -m "<headline naming who asked in Slack>"`. It
+  waits for the requester's approval; the commit is the GitHub app's own, so Vercel deploys it. Never `git push`,
+  open pull requests or write anywhere but `main`.
 
 ## Keys
 

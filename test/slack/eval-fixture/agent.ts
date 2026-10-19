@@ -2,7 +2,7 @@ import { defineAgent } from "eve";
 import { mockModel } from "eve/evals";
 
 const push = {
-  command: "git push origin HEAD:main",
+  command: 'gh-signed-commit --repo acme/acme-gtm --branch main -m "Add the mid-market ICP"',
   description: "Add the mid-market ICP",
   permissions: [{ provider: "github", repositories: ["acme/acme-gtm"], access: "write" }],
 };

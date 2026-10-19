@@ -12,8 +12,12 @@ const CONNECTOR = "github/gtm";
 
 /** Commands that only read: everything else, including every push, waits for the requester's approval. */
 const READ_ONLY = /^\s*(gh\s+repo\s+(clone|view)|git\s+(fetch|pull|ls-remote))\s/u;
-/** Pushes that rewrite or delete history (force, delete, mirror, prune, `+ref`, `:ref`) are refused outright. */
-const DESTRUCTIVE = /^\s*git\s+push\s(.*\s)?(-[A-Za-z]*[fd][A-Za-z]*|--force\S*|--delete|--mirror|--prune|[+:]\S*)(\s|$)/u;
+/**
+ * Every `git push` is refused: Vercel (Pro, private repo) deploys only commits by team members or by a GitHub app, and
+ * a commit made in the sandbox is neither. `gh-signed-commit` commits the staged change through GitHub's API as this
+ * connector's app (verified, marked as a bot), straight onto main.
+ */
+const PUSH = /^\s*git\s+push(\s|$)/u;
 
 type Firewall = SandboxSession & { setNetworkPolicy?(policy: { allow: Record<string, readonly GitHubLeaseRule[]> }): Promise<void> };
 
@@ -25,17 +29,19 @@ async function broker(sandbox: Firewall, rules: Readonly<Record<string, readonly
 
 const gh = defineGhTool(
   () => ({ connector: CONNECTOR, org: owner, broker, authorize: (r) => r.repository.toLowerCase() === repository.toLowerCase() }),
-  `Run one authenticated GitHub command for this project's repository, ${repository}: \`gh repo clone ${repository}\`, \`git pull origin main\`, \`git push origin HEAD:main\` and other gh commands. Declare that repository in permissions (access "write"). Clone, view, fetch, pull and ls-remote run at once; anything else, every push included, first asks the person who asked you to approve it, so say in \`description\` what changes and why. Force pushes and branch deletes are refused. Argv syntax only, no pipes or substitutions. Use bash for local git status, diff, add and commit.`,
+  `Run one authenticated GitHub command for this project's repository, ${repository}: \`gh repo clone ${repository}\`, \`git pull origin main\`, \`gh-signed-commit --repo ${repository} --branch main -m "<headline>"\` (commits the staged change to main) and other gh commands. Declare that repository in permissions (access "write"). Clone, view, fetch, pull and ls-remote run at once; anything else, every commit included, first asks the person who asked you to approve it, so say in \`description\` what changes and why. \`git push\` is refused. Argv syntax only, no pipes or substitutions. Use bash for local git status, diff and add.`,
 );
 
-/** The only way this agent writes to GitHub: commit locally with bash, then push to main here after the yes. */
+/** The only way this agent writes to GitHub: stage with bash, then gh-signed-commit to main here after the yes. */
 export default defineTool({
   ...gh,
   approval: {
     request: ({ toolInput }) => {
       const checked = githubShellApproval(toolInput);
       if (checked !== "not-applicable") return checked;
-      if (DESTRUCTIVE.test(toolInput?.command ?? "")) return { type: "denied", reason: "Force pushes and branch deletes are not allowed." };
+      if (PUSH.test(toolInput?.command ?? "")) {
+        return { type: "denied", reason: `git push is refused; stage the change, then run gh-signed-commit --repo ${repository} --branch main -m "<headline>".` };
+      }
       return READ_ONLY.test(toolInput?.command ?? "") ? "not-applicable" : "user-approval";
     },
     response: requesterOnly,

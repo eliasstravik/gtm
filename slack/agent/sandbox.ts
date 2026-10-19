@@ -13,7 +13,6 @@ export const egress = Object.fromEntries(HOSTS.map((host) => [host, []]));
 export const environment = VercelSandbox.environment({
   async prepare(sandbox) {
     await installCodeTooling(sandbox);
-    await sandbox.run({ command: "git config --global user.name 'GTM Slack agent' && git config --global user.email 'gtm-agent@users.noreply.github.com'" });
   },
 });
 

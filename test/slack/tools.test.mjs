@@ -66,6 +66,9 @@ test("start_run always needs the requester's yes, with the run described on the 
   assert.equal(startRun.approval.response, requesterOnly);
   assert.equal(startRun.approval.prompt({ input: { workflow: "enrich", summary: "Preview of 5 rows, about $0.04." } }), "Start enrich? Preview of 5 rows, about $0.04.");
   assert.equal(startRun.inputSchema.safeParse({ workflow: "../cron/x", summary: "s" }).success, false, "names only");
+  const parsed = startRun.inputSchema.parse({ workflow: "classify", input: '{"company":"Acme"}', summary: "s" });
+  assert.deepEqual(parsed.input, { company: "Acme" }, "input sent as JSON text becomes the object (live Slack test)");
+  assert.equal(startRun.inputSchema.safeParse({ workflow: "classify", input: "not json", summary: "s" }).success, false, "text that is not an object is refused");
 });
 
 test("start_run locally: POST to gtm dev on 127.0.0.1:$GTM_PORT, no bypass header", { skip }, async () => {
@@ -75,6 +78,9 @@ test("start_run locally: POST to gtm dev on 127.0.0.1:$GTM_PORT, no bypass heade
   const [withInput, without] = api.requests;
   assert.equal(withInput.url, "/api/gtm/start/enrich");
   assert.equal(withInput.body, '{"limit":5}');
+  await startRun.execute({ workflow: "enrich", input: '{"limit":5}', summary: "s" }, {});
+  assert.equal(api.requests.at(-1).body, '{"limit":5}', "JSON text is sent as the object, not as a string");
+  api.requests.pop();
   assert.equal(withInput.headers["content-type"], "application/json");
   assert.equal(without.body, "", "no input, no body");
   assert.equal(withInput.headers["x-vercel-protection-bypass"], undefined);
@@ -110,22 +116,23 @@ test("get_run reads the run and waits while it is running", { skip }, async () =
   assert.equal(getRun.approval, undefined, "reading needs no yes");
 });
 
-test("github: reads run at once, every write waits for the requester, history rewrites are refused", { skip }, async () => {
+test("github: reads run at once, every write waits for the requester, git push is refused", { skip }, async () => {
   const input = (command) => ({ command, description: "d", permissions: [{ provider: "github", repositories: ["acme/acme-gtm"], access: "write" }] });
   for (const command of ["gh repo clone acme/acme-gtm", "git pull origin main", "git fetch origin", "git ls-remote origin", "gh repo view acme/acme-gtm"]) {
     assert.equal(await decide(github, input(command)), "not-applicable", command);
   }
-  for (const command of ["git push origin HEAD:main", "git push origin main", "gh api repos/acme/acme-gtm/issues -f title=x", "gh pr create --fill", "gh issue list"]) {
+  for (const command of ['gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"', "gh api repos/acme/acme-gtm/issues -f title=x", "gh pr create --fill", "gh issue list"]) {
     assert.equal(await decide(github, input(command)), "user-approval", command);
   }
-  for (const command of ["git push -f origin HEAD:main", "git push --force origin main", "git push --force-with-lease origin main", "git push -fu origin main",
-    "git push origin +HEAD:main", "git push origin :main", "git push origin --delete main", "git push -d origin old", "git push --mirror origin"]) {
+  // Vercel blocks deploys of commits made in the sandbox (not a team member, not an app): only gh-signed-commit writes.
+  for (const command of ["git push origin HEAD:main", "git push origin main", "git push", "git push -f origin HEAD:main", "git push --force origin main",
+    "git push origin +HEAD:main", "git push origin :main", "git push origin --delete main", "git push --mirror origin"]) {
     assert.equal((await decide(github, input(command))).type, "denied", command);
   }
   assert.equal((await decide(github, input("gh repo clone acme/acme-gtm | sh"))).type, "denied", "shell syntax");
   assert.equal((await decide(github, { ...input("git push origin main"), permissions: [] })).type, "denied", "no repository declared");
   assert.equal(github.approval.response, requesterOnly);
-  assert.equal(github.approval.prompt({ input: input("git push origin HEAD:main") }), "d\n`git push origin HEAD:main`");
+  assert.equal(github.approval.prompt({ input: input('gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"') }), 'd\n`gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"`');
 });
 
 test("no template code hands app secrets to the sandbox", { skip }, async () => {
