@@ -29,6 +29,12 @@ test("with --company and no folder it creates ./gtm-<company>, named in package.
   assert.match(r.output, /cd gtm-cafe-acme-co/);
 });
 
+test("the company name is written as given, $ patterns included", () => {
+  const r = init(["custom-dollar", "--company", "Acme $& Co $1"]);
+  assert.equal(r.code, 0, r.output);
+  assert.match(read("custom-dollar", "context", "company.md"), /^# Acme \$& Co \$1$/m);
+});
+
 test("a company already named gtm-… is not doubled", () => {
   assert.equal(init(["--company", "gtm-acme"]).code, 0);
   assert.ok(fs.existsSync(path.join(work, "gtm-acme", "package.json")));

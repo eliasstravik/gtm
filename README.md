@@ -14,11 +14,12 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
    (it runs `npx @eliasstravik/gtm init --company Acme`, which creates `./gtm-acme`).
 2. **Claude Code plugin**: `/plugin marketplace add eliasstravik/gtm` then `/plugin install gtm@eliasstravik`
    (or `npx plugins add eliasstravik/gtm`).
-3. **Deploy button**: deploys the starter at `v0.0.1` as a new Vercel project with Neon (no Slack agent; add
-   it later with `npx @eliasstravik/gtm init --slack`). The Console fails closed, showing "Turn on Vercel
+3. **Deploy button**: deploys the starter at `v0.0.1` as a new Vercel project with Neon, suggested as
+   `gtm-company`: put the company's name in place of `company` (`gtm-acme`) for both the repo and the project (no
+   Slack agent; add it later with `npx @eliasstravik/gtm init --slack`). The Console fails closed, showing "Turn on Vercel
    Authentication → All Deployments", until production protection is on; follow [docs/deploy.md](docs/deploy.md).
 
-   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.1%2Fstarter&project-name=gtm&repository-name=gtm&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
+   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.1%2Fstarter&project-name=gtm-company&repository-name=gtm-company&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
 
 ## What you get
 
@@ -40,6 +41,8 @@ The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
 | Topic | |
 | --- | --- |
 | [layout](docs/layout.md) | the project layout and what the Console reads |
+| [context](docs/context.md) | the basics at setup, and a suggested layout for company facts, members, ICPs, personas |
+| [interaction](docs/interaction.md) | how agents talk to the GTM team: plain replies, one question at a time, what needs a yes |
 | [workflows](docs/workflows.md) | the registry, preview → yes in chat → run, `gtm run`, run size |
 | [data](docs/data.md) | `db()`, migrations, the production stamp, local data |
 | [connections](docs/connections.md) | `.env.example`, saving keys locally and live |

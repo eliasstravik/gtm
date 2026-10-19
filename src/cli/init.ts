@@ -94,7 +94,7 @@ function create(dir: string, starter: string, spec: string | undefined, company:
   const text = existsSync(claude) ? readFileSync(claude, "utf8") : "";
   if (!/^@AGENTS\.md\s*$/m.test(text)) writeFileSync(claude, `@AGENTS.md\n${text ? `\n${text}` : ""}`);
   const companyFile = join(dir, "context", "company.md");
-  if (company) writeFileSync(companyFile, readFileSync(companyFile, "utf8").replace(/^# .*$/m, `# ${company}`));
+  if (company) writeFileSync(companyFile, readFileSync(companyFile, "utf8").replace(/^# .*$/m, () => `# ${company}`));
   const pkg = readJson(join(starter, "package.json"));
   pkg.name = basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[._-]+/, "") || pkg.name;
   pkg.dependencies["@eliasstravik/gtm"] = spec ?? `^${readJson(join(packageRoot(), "package.json")).version}`;
