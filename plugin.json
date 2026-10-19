@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "gtm",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Set up and run a company's go-to-market work as an ordinary Next.js project on Vercel, with one Console for the team.",
   "repository": "https://github.com/eliasstravik/gtm",
   "license": "MIT"
