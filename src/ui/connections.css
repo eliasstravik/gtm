@@ -1,5 +1,4 @@
 /* Connections: each key by its comment and whether it is set here, never its value; Add or Replace opens a dialog. */
-.connections-view .title-row p { margin-top: 4px; }
 .banner { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .banner.warn { color: var(--amber); }
 .connection-list { max-width: 1100px; margin-top: 16px; border-top: 1px solid var(--border); }

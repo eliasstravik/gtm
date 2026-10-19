@@ -47,9 +47,10 @@ export function ConnectionsView() {
   return (
     <div className="connections-view">
       <div className="title-row">
-        <div><h1>Connections</h1><p className="muted" role="status">{summary}</p></div>
+        <h1>Connections</h1>
         {save.mode === "link" && <a className="button" href={save.settingsUrl} target="_blank" rel="noreferrer">Open in Vercel</a>}
       </div>
+      <p className="subtitle" role="status">{summary}</p>
       <div className="page">
         <Status state={state} />
         {data.tokenWarning && <p className="banner warn">{data.tokenWarning}</p>}
