@@ -52,6 +52,24 @@ The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
 Not in 0.0.1, but the layout leaves room for them: built-in CRM and sequencer parts, and **Artifacts**, pages the
 agent makes for the company (reports, dashboards) listed in the Console's sidebar.
 
+## Releasing
+
+One version for the package, the starter's pin, the plugin manifests and the Deploy button's tag. Releases publish
+from GitHub Actions ([release.yml](.github/workflows/release.yml)) through npm trusted publishing, so no npm token
+lives on any machine and every version carries provenance:
+
+1. Set `version` in `package.json` (and `package-lock.json`) to the release candidate, for example `0.0.2-rc.1`, merge
+   to `main`, then push the tag: `git tag v0.0.2-rc.1 && git push origin v0.0.2-rc.1`. A pre-release tag publishes
+   under `next`; mark its GitHub release as a pre-release.
+2. Check the candidate (`npx @eliasstravik/gtm@next init`, a Vercel deploy that installs it).
+3. Set `version` to `0.0.2` in `package.json`, `package-lock.json`, `plugin.json` and `.claude-plugin/plugin.json`,
+   the starter's pin to `^0.0.2` and the Deploy button's tag to `v0.0.2`; merge, push tag `v0.0.2` (publishes under
+   `latest`) and make its GitHub release.
+
+The tag must match `package.json`, or the workflow refuses. The trust between npm and this repo's `release.yml` was
+set once with `npm trust github @eliasstravik/gtm --repo eliasstravik/gtm --file release.yml --allow-publish`;
+renaming the workflow file breaks it.
+
 ## License
 
 [MIT](LICENSE)
