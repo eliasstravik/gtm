@@ -43,6 +43,7 @@ Talk by [the interaction rules](references/interaction.md); reproduce [the dialo
    | Job | Topics |
    | --- | --- |
    | Add or change context the person asked for | context |
+   | Add or change a company skill (in `.agents/skills/<name>/SKILL.md` only) | layout |
    | Build, change, preview, run or schedule a workflow | workflows, data, recipes (copy one only when asked) |
    | Open the Console (`npm run dev`) or change project files | layout, local |
    | Add a connection or API key | connections |
@@ -67,6 +68,10 @@ Changes in the company's `gtm-<company>` repo and, for deploy steps, its Vercel 
 ## QC
 
 - After setup, `context/` holds only `company.md` with the name and a short description until the person asks for more.
+- Every AI call in a workflow, one-shot or tool-using, is `agent()`: no `ai` or `@ai-sdk/*` import, no
+  `generateText`/`generateObject`/`streamText`/`WorkflowAgent`, no model id in workflow code (`GTM_MODEL` picks it).
+- A company skill is a folder in `.agents/skills/` with a `SKILL.md` (`name`, `description`), created there and
+  not through `.claude/skills` or `agent/skills`.
 - `npx @eliasstravik/gtm check` exits 0 after every change, and `check --prod` before a deploy is called live.
 - No real run of a risky or costly workflow started without a yes in chat.
 

@@ -87,11 +87,36 @@ Keep each run under ~2,000 events (the Workflow SDK caps a run at 25,000 and rep
 made ~120 events; a measured tool-less `agent()` row makes ~6), about 100 rows when rows are plain steps. Fan
 larger lists out into child runs of that size.
 
+## AI steps
+
+Every AI call in a workflow is `agent()` from `@eliasstravik/gtm/ai`: a one-shot extract, score or draft is
+`agent()` without `tools`; research that picks its own tool calls is `agent()` with them. It picks the backend
+(local.md), counts cost and keeps keys out of the run log. Never call `generateText`, `generateObject`,
+`streamText`, `WorkflowAgent`, `gateway()` or a provider directly, and never write a model id in workflow code:
+`GTM_MODEL` picks the model, and a stage's own `model` is only for a stage that truly needs another one. Custom
+tools take `tool` from `@eliasstravik/gtm/ai` too. `npx @eliasstravik/gtm check` flags `ai` and `@ai-sdk/*`
+imports and model ids under `workflows/`.
+
+```ts
+const { value } = await agent({
+  name: "draftEmail",
+  instructions: "Draft the first cold email to this person.",
+  skills: ["email-copywriting"], // .agents/skills/email-copywriting/SKILL.md (layout.md)
+  prompt: JSON.stringify(person),
+  schema: z.object({ subject: z.string(), body: z.string() }),
+});
+```
+
 ## Scope rules
 
 - `db()` (`@eliasstravik/gtm/db`) only inside `"use step"` bodies. A workflow-scope reference to anything from
   a module that reaches `db()` pulls `pg` into the workflow bundle and the build fails.
 - `agent()` (`@eliasstravik/gtm/ai`) only in workflow scope, never inside a `"use step"` body; it makes its own
-  steps. Options: `name`, `instructions`, `prompt`, `schema`, `model?`, `reasoning?`, `tools?` (`mcp`, `web`,
-  `custom`), `maxSteps?`, `timeout?`. It returns `{ value, costUsd, modelCalls, toolCalls, usage }`;
-  on the `claude`/`codex` CLI path `toolCalls` is always `[]` (the CLI runs its own tool loop). Backends and models: local.md.
+  steps. Options: `name`, `instructions`, `prompt`, `skills?` (folder names in `.agents/skills`; each
+  `SKILL.md` body joins the instructions, read in a step, so it works hosted too; an unknown name fails the
+  stage), `schema`, `model?`, `reasoning?`, `tools?` (`mcp`, `web`, `custom`), `maxSteps?` (default 20),
+  `maxUsd?` (a soft spend cap), `timeout?` (default `"10m"`; the stage fails when it is reached). When `maxSteps`
+  or `maxUsd` cuts the loop short, one last call without tools writes up the result. It returns `{ value,
+  costUsd, modelCalls, toolCalls, usage, stopReason }`, `stopReason` being `done`, `maxSteps` or `maxUsd`; on the
+  `claude`/`codex` CLI path `toolCalls` is always `[]` and `stopReason` `done` (the CLI runs its own tool loop).
+  Backends, models and what `maxUsd` counts on each: local.md.

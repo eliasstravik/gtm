@@ -23,8 +23,9 @@ block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm -->`), which `npx @
 | `app/[[...path]]/page.tsx` | the built-in views |
 | `app/api/gtm/[...path]/route.ts` | `gtm({ workflows })`: Console reads, start, runs, cron, Connections save |
 | `app/api/hooks/<sender>/route.ts` | inbound webhooks (webhooks.md) |
-| `.agents/skills/` | the company's own project skills, one `<name>/SKILL.md` each |
+| `.agents/skills/` | the company's own skills, one `<name>/SKILL.md` folder each and nothing else; Codex reads it directly |
 | `.claude/skills` | symlink to `../.agents/skills`; how Claude Code sees the company's skills |
+| `agent/skills` | with the Slack agent, symlink to `../.agents/skills`; how the Slack agent sees them |
 | `agent/` | optional Slack agent, added by `npx @eliasstravik/gtm init --slack` (slack.md) |
 | `.env.example` | every connection name with a one-line comment (connections.md) |
 | `vercel.json` | crons, each pointing at `/api/gtm/cron/<workflow>` (workflows.md) |
@@ -37,8 +38,24 @@ Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/` (local ru
 ## Where things go
 
 - Company know-how is Markdown under `context/`, added when a person asks for it (context.md).
-- Project skills go in `.agents/skills/` only. Where symlinks fail (Windows without developer mode) `init`
-  copies instead, and `npx @eliasstravik/gtm check` warns that the copies must be kept in sync.
+- A company skill (a procedure, such as how to write a cold email) is one folder,
+  `.agents/skills/<name>/SKILL.md`, whose front matter has `name` (the folder's name) and `description`; the body
+  is the procedure. Create it there, never through `.claude/skills` or `agent/skills`: they are links to that folder.
+  Put nothing else in it (the Slack agent's build fails on other entries). Claude Code, Codex and the Slack agent
+  all pick it up; a workflow stage loads it with `agent({ skills: ["<name>"] })` (workflows.md).
+
+  ```md
+  ---
+  name: email-copywriting
+  description: Writes cold emails in Acme's voice. Use when drafting outbound email.
+  ---
+
+  # Email copywriting
+
+  Keep it under 90 words …
+  ```
+- Where symlinks fail (Windows without developer mode) `init` copies `.agents/skills` instead, and
+  `npx @eliasstravik/gtm check` warns that the copies must be kept in sync.
 - The `gtm` skill that set this project up is never installed into it.
 - Lasting results live in workflow-owned tables in `public`, not in run history.
 - Reserved first path segments: `context`, `workflows`, `data`, `connections`, `api`, `eve`, `_gtm`.
@@ -49,8 +66,9 @@ Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/` (local ru
   environment badge (Local, Preview, Production; amber "Updating…" while a saved key goes live); then Context,
   Workflows (with Runs), Data and Connections (with a count of keys not set here). Below 1024px wide the sidebar
   folds behind a menu button.
-- Context: every `context/**/*.md` sorted by path; under "Skills", `AGENTS.md` and every
-  `.agents/skills/*/SKILL.md`. Read-only; hosted, each file links to GitHub. Only `.md` files show.
+- Context: every `context/**/*.md` sorted by path; under "Skills", each `.agents/skills/<name>/SKILL.md`, by its
+  `name` with its `description`, which a skill's page shows in place of the front matter. Read-only; hosted, each
+  file links to GitHub. Only `.md` files show. `AGENTS.md` is not shown: it is the coding agents' instructions.
 - Workflows: the names in `workflows/index.ts`, the schedules in `vercel.json`, and each one's last run; a
   workflow's page shows its diagram, runs, tables and keys from its registry entry (workflows.md); Runs
   lists every run, filtered by workflow, status and time, from the Workflow SDK's own run store. Neither touches
