@@ -32,9 +32,8 @@ block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm -->`), which `npx @
 | `next.config.ts` | `withGtm({})` from `@eliasstravik/gtm/next` |
 | `package.json` | scripts `dev` (`gtm dev`), `build` (`gtm migrate && next build`), `db:generate`, `db:migrate` |
 
-Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/`, `.vercel/`, `.next/` (local runs
-live in `.next/workflow-data/`),
-`node_modules/`.
+Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/`, `.vercel/`, `.next/` (local runs live in
+`.next/workflow-data/`), `node_modules/`.
 
 ## Where things go
 
