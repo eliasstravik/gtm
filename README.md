@@ -15,12 +15,12 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
    asks what to add). For a demo, `init --company Acme --example` adds one small marked example workflow.
 2. **Claude Code plugin**: `/plugin marketplace add eliasstravik/gtm` then `/plugin install gtm@eliasstravik`
    (or `npx plugins add eliasstravik/gtm`).
-3. **Deploy button**: deploys the starter at `v0.0.1` as a new Vercel project with Neon, suggested as
+3. **Deploy button**: deploys the starter at `v0.0.2` as a new Vercel project with Neon, suggested as
    `gtm-company`: put the company's name in place of `company` (`gtm-acme`) for both the repo and the project (no
    Slack agent; add it later with `npx @eliasstravik/gtm init --slack`). The Console fails closed, showing "Turn on Vercel
    Authentication → All Deployments", until production protection is on; follow [docs/deploy.md](docs/deploy.md).
 
-   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.1%2Fstarter&project-name=gtm-company&repository-name=gtm-company&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
+   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.2%2Fstarter&project-name=gtm-company&repository-name=gtm-company&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
 
 ## What you get
 
@@ -55,7 +55,7 @@ The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
 
 ## Future direction
 
-Not in 0.0.1, but the layout leaves room for them: built-in CRM and sequencer parts, and **Artifacts**, pages the
+Not built yet, but the layout leaves room for them: built-in CRM and sequencer parts, and **Artifacts**, pages the
 agent makes for the company (reports, dashboards) listed in the Console's sidebar.
 
 ## Releasing
@@ -64,15 +64,15 @@ One version for the package, the starter's pin, the plugin manifests and the Dep
 from GitHub Actions ([release.yml](.github/workflows/release.yml)) through npm trusted publishing, so no npm token
 lives on any machine and every version carries provenance:
 
-1. Set `version` in `package.json` (and `package-lock.json`) to the release candidate, for example `0.0.2-rc.1`, merge
-   to `main`, then push the tag: `git tag v0.0.2-rc.1 && git push origin v0.0.2-rc.1`. A pre-release tag publishes
+1. Set `version` in `package.json` (and `package-lock.json`) to the release candidate, for example `0.0.3-rc.1`, merge
+   to `main`, then push the tag: `git tag v0.0.3-rc.1 && git push origin v0.0.3-rc.1`. A pre-release tag publishes
    under `next`; mark its GitHub release as a pre-release.
 2. Check the candidate in a project made with `npx @eliasstravik/gtm@next init`, which pins the candidate
-   (`^0.0.2-rc.1`), and in a Vercel deploy of such a project. Not the starter or the Deploy button: their `^0.0.1`
+   (`^0.0.3-rc.1`), and in a Vercel deploy of such a project. Not the starter or the Deploy button: their `^0.0.2`
    pin never matches a pre-release, so they would still install the previous version.
-3. Set `version` to `0.0.2` in `package.json`, `package-lock.json`, `plugin.json` and `.claude-plugin/plugin.json`,
-   the starter's pin to `^0.0.2` and the Deploy button's tag to `v0.0.2`; merge, push tag `v0.0.2` (publishes under
-   `latest`) and make its GitHub release.
+3. Set `version` to `0.0.3` in `package.json`, `package-lock.json`, `plugin.json` and `.claude-plugin/plugin.json`,
+   the MCP client version in `src/ai/tools.ts`, the starter's pin to `^0.0.3` and the Deploy button's tag to `v0.0.3`;
+   merge, push tag `v0.0.3` (publishes under `latest`) and make its GitHub release.
 
 The tag must match `package.json`, or the workflow refuses. The trust between npm and this repo's `release.yml` was
 set once with `npm trust github @eliasstravik/gtm --repo eliasstravik/gtm --file release.yml --allow-publish`;

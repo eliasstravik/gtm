@@ -77,7 +77,7 @@ function refuseNonEmpty(dir: string): void {
   if (!existsSync(dir)) return;
   const pkg = readJson(join(dir, "package.json"));
   if (pkg?.dependencies?.next || pkg?.devDependencies?.next || readdirSync(dir).some((f) => f.startsWith("next.config.")))
-    throw new Error(`${dir} is an existing Next.js app; adding gtm to one is not supported in 0.0.1. Run init in a new folder.`);
+    throw new Error(`${dir} is an existing Next.js app; adding gtm to one is not supported yet. Run init in a new folder.`);
   const extra = readdirSync(dir).filter((name) => !EMPTY_OK.has(name));
   if (extra.length) throw new Error(`${dir} is not empty (${extra.slice(0, 5).join(", ")}). Run init in an empty folder or a gtm project.`);
   const [claude, agents] = [join(dir, ".claude", "skills"), join(dir, ".agents", "skills")];
