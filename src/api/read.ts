@@ -134,6 +134,7 @@ async function view(q: Query, name: string, p: URLSearchParams) {
   if (field && op === "missing") where.push(`x.${ident(field)} is null`);
   else if (field && OPERATORS[op] && p.has("value")) {
     const number = fields.find((f) => f.name === field)!.type === "number" && (op === "gt" || op === "lt");
+    if (number && !(p.get("value")!.trim() && Number.isFinite(Number(p.get("value"))))) throw new HttpError(400, `${field} holds numbers: compare it with a number.`);
     where.push(`x.${ident(field)}${number ? "" : "::text"} ${OPERATORS[op]} $${values.push(p.get("value"))}${number ? "::numeric" : ""}`);
   }
   const sort = known(p.get("sort")), order = p.get("order") === "desc" ? "desc" : "asc";

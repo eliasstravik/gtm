@@ -132,16 +132,18 @@ function useRows(view: string | null, box: RefObject<HTMLDivElement | null>) {
   };
 }
 
-/** Data: any table as a read-only grid, with search, one filter, sort, column choice and export. */
-export function DataView() {
+/** Data: any table (or only a workflow's `tables`) as a read-only grid, with search, one filter, sort, column choice and export. */
+export function DataView({ tables: only }: { tables?: string[] }) {
   const { params, go } = useQuery();
   const tables = useApi<{ tables: { name: string }[] }>("data");
-  const names = tables.data?.tables.map((t) => t.name) ?? [];
+  const names = tables.data?.tables.map((t) => t.name).filter((n) => !only || only.includes(n)) ?? [];
   const table = params.get("table") ?? names[0];
   const filters = new URLSearchParams(FILTERS.flatMap((k) => (params.has(k) ? [[k, params.get(k)!]] : [])));
   const view = table ? `data/${encodeURIComponent(table)}?${filters}${filters.size ? "&" : ""}` : null;
   const box = useRef<HTMLDivElement>(null), grid = useRef<HTMLTableElement>(null), dialog = useRef<HTMLDialogElement>(null);
   const list = useRows(view, box), page = list.page;
+  // A read that fails (say, a bad filter value in a link) still gets the toolbar, from a plain read, to fix it in place.
+  const bare = useApi<Page>(list.state.error && !page && table ? `data/${encodeURIComponent(table)}?limit=1` : null).data, head = page ?? bare;
   const [selected, setSelected] = useState<[number, number] | null>(null), [widths, setWidths] = useState<Record<string, number>>({});
   const [message, setMessage] = useState(""), [exporting, setExporting] = useState(false), [detail, setDetail] = useState<unknown>("");
   const origin = useRef<HTMLElement | null>(null), focusAfterDraw = useRef<[number, number] | null>(null), drag = useRef<{ x: number; w: number } | null>(null);
@@ -202,11 +204,11 @@ export function DataView() {
   const cell = selected && list.rows.has(selected[0]) ? selected : null, span = cols.length + 1, sort = params.get("sort"), desc = params.get("order") === "desc";
   return (
     <>
-      <div className="title-row"><h1>Data</h1></div>
+      {!only && <div className="title-row"><h1>Data</h1></div>}
       <section className="pane data-pane" aria-label="Data">
         <Status state={!tables.data ? tables : { ...list.state, data: page, loading: !page && list.state.loading }} />
-        {tables.data && !names.length && <p className="notice">No tables yet. Workflows keep their results in their own tables.</p>}
-        {page && (
+        {tables.data && !names.length && <p className="notice">{only ? "No configured data for this workflow." : "No tables yet. Workflows keep their results in their own tables."}</p>}
+        {head && (
           <>
             <div className="toolbar">
               <select name="data-table" aria-label="Data table" value={table}
@@ -217,20 +219,20 @@ export function DataView() {
               <select name="filter-field" aria-label="Filter field" value={params.get("field") ?? ""}
                 onChange={(e) => update({ field: e.target.value || undefined, value: undefined })}>
                 <option value="">Filter</option>
-                {page.fields.map((f) => <option key={f.name} value={f.name}>{label(f.name)}</option>)}
+                {head.fields.map((f) => <option key={f.name} value={f.name}>{label(f.name)}</option>)}
               </select>
               {params.has("field") && <select name="filter-operator" aria-label="Filter operator" value={params.get("operator") ?? "eq"}
                 onChange={(e) => update({ operator: e.target.value })}>{Object.entries(OPERATORS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}
               {params.has("field") && params.get("operator") !== "missing" &&
                 <Search label="Filter value" value={params.get("value") ?? ""} onChange={(v) => update({ value: v || undefined })} />}
               <button type="button" onClick={list.state.reload}>Refresh</button>
-              <ColumnChooser key={table} fields={page.fields.map((f) => f.name)} visible={cols} onChange={(c) => update({ columns: c?.join(",") })} />
+              <ColumnChooser key={table} fields={head.fields.map((f) => f.name)} visible={head.columns} onChange={(c) => update({ columns: c?.join(",") })} />
               <button type="button" disabled={exporting || !list.total} onClick={() => download("csv")}>Export CSV</button>
               <button type="button" disabled={exporting || !list.total} onClick={() => download("json")}>Export JSON</button>
               {cell && <button type="button" onClick={() => copy(value(cell))}>Copy cell</button>}
               {cell && <button type="button" onClick={(e) => { origin.current = e.currentTarget; setDetail(value(cell)); dialog.current?.showModal(); }}>View value</button>}
             </div>
-            <div className="table-scroll" ref={box}>
+            {page && <><div className="table-scroll" ref={box}>
               <table ref={grid} className="data-grid" role="grid" aria-label={table} aria-readonly="true" aria-rowcount={list.total + 1}
                 // An explicit width keeps the layout fixed, so a long value cannot widen its column.
                 style={{ width: 56 + order.reduce((sum, j) => sum + width(j), 0) }} aria-busy={!list.fresh} onKeyDown={onGridKey}>
@@ -282,7 +284,7 @@ export function DataView() {
               </table>
               {list.fresh && !list.total && <p className="notice">{params.has("q") || params.has("field") ? "No matching records." : "This table is empty."}</p>}
             </div>
-            <p className="grid-footer muted">{list.fresh ? `${list.total.toLocaleString()} matching ${list.total === 1 ? "record" : "records"}` : "Loading…"}</p>
+            <p className="grid-footer muted">{list.fresh ? `${list.total.toLocaleString()} matching ${list.total === 1 ? "record" : "records"}` : "Loading…"}</p></>}
           </>
         )}
         <p className="grid-message" role="status">{message}</p>

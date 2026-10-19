@@ -9,7 +9,7 @@ import { HttpError, json } from "./http.js";
 import { contextFile, contextList, dataExport, dataPage, dataTables, shell } from "./read.js";
 import { cronRun, type Registry, runsList, runStatus, startRun, workflowsList } from "./runs.js";
 
-export type { Registry } from "./runs.js";
+export type { About, DiagramNode, Registry } from "./runs.js";
 
 type Handler = (req: Request, ctx: { params: Promise<{ path?: string[] }> }) => Promise<Response>;
 

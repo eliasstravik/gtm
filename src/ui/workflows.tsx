@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
+import type { About } from "../api/runs.js";
+import { ConnectionsView } from "./connections.js";
+import { DataView } from "./data.js";
+import { DiagramView } from "./diagram.js";
 import { Link, Search, Status, duration, time, useApi, useQuery } from "./load.js";
 import "./workflows.css";
 
 type LastRun = { id: string; status: string; createdAt: string; startedAt: string | null; completedAt: string | null };
-type Workflow = { name: string; schedule: string | null; lastRun: LastRun | null };
+type Workflow = { name: string; schedule: string | null; lastRun: LastRun | null } & About;
 type Workflows = { workflows: Workflow[]; runsKnown: boolean; runsUrl: string | null };
 type Run = LastRun & { workflow: string; error: string | null; url: string | null };
 type Runs = { data: Run[]; cursor: string | null; hasMore: boolean; runsUrl: string | null };
@@ -88,21 +92,41 @@ export function WorkflowsView() {
   </>;
 }
 
-/** One workflow: how it starts, then its runs. The path segment arrives still percent-encoded. */
+const TABS = [["diagram", "Diagram"], ["runs", "Runs"], ["data", "Data"], ["connections", "Connections"]];
+
+/**
+ * One workflow, in the viewer's four tabs (`?view=`): its diagram with what it does and how it starts, its runs, its
+ * tables and the keys it uses. It opens on the diagram, or on Runs when it has none. The path arrives still encoded.
+ */
 export function WorkflowView({ name: segment }: { name: string }) {
   let name = segment;
   try { name = decodeURIComponent(segment); } catch {}
-  const state = useApi<Workflows>("workflows");
-  const workflow = state.data?.workflows.find((w) => w.name === name);
+  const state = useApi<Workflows>("workflows"), { params } = useQuery();
+  const w = state.data?.workflows.find((x) => x.name === name);
+  const keys = useApi<{ connections: { name: string; set: boolean }[] }>(w?.connections?.length ? "connections" : null).data;
+  const unset = keys?.connections.filter((c) => !c.set && w?.connections?.includes(c.name)).length ?? 0;
+  const view = params.get("view") ?? (w?.diagram ? "diagram" : "runs");
   return <>
     <div className="title-row">
       <div className="breadcrumbs"><Link href="/workflows">Workflows</Link><span aria-hidden="true">/</span><h1>{name}</h1></div>
     </div>
-    {workflow && <p className="subtitle">Starts: {scheduleText(workflow.schedule) ?? "Manual"}</p>}
     <Status state={state} />
-    {state.data && !workflow
-      ? <p role="alert" className="notice">This workflow no longer exists. <Link href="/workflows">Show all workflows</Link></p>
-      : <RunsView workflow={name} />}
+    {state.data && !w && <p role="alert" className="notice">This workflow no longer exists. <Link href="/workflows">Show all workflows</Link></p>}
+    {w && <>
+      <nav className="tabs" aria-label="Workflow views">
+        {TABS.map(([v, label]) => <Link key={v} href={`/workflows/${encodeURIComponent(name)}?view=${v}`} aria-current={view === v ? "page" : undefined}>
+          {label}{v === "connections" && unset > 0 && <span className="tab-count" title={`${unset} not set here`}>
+            <span className="sr-only">, </span>{unset}<span className="sr-only"> not set</span></span>}
+        </Link>)}
+      </nav>
+      {view === "runs" ? <RunsView workflow={name} />
+        : view === "data" ? <DataView tables={w.tables ?? []} />
+        : view === "connections" ? <ConnectionsView only={w.connections ?? []} />
+        : <DiagramView diagram={w.diagram} summary={<>
+          {w.description && <p className="diagram-description">{w.description}</p>}
+          <p className="diagram-trigger">Starts: {scheduleText(w.schedule) ?? "Manual"}</p>
+        </>} />}
+    </>}
   </>;
 }
 

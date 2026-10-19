@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { onReleaseSettled, releaseStarted } from "./environment.js";
-import { api, Status, useApi } from "./load.js";
+import { api, Link, Status, useApi } from "./load.js";
 import "./connections.css";
 
 type Connection = { name: string; description: string; set: boolean };
@@ -18,7 +18,7 @@ const icons = {
  * Connections: each key `.env.example` lists, by its comment, and whether it is set here, never its value. Add or
  * Replace sends one value: locally into .env.local, hosted into Vercel's Production env, which then redeploys.
  */
-export function ConnectionsView() {
+export function ConnectionsView({ only }: { only?: string[] }) {
   // Keys saved from this page: "getting ready" locally until the server reads them, "going live" until the redeploy is.
   const [saved, setSaved] = useState<string[]>([]), [note, setNote] = useState("");
   const [editing, setEditing] = useState<{ c: Connection; verb: string } | null>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -28,15 +28,16 @@ export function ConnectionsView() {
   const { reload, data } = state;
   useEffect(() => onReleaseSettled(() => { setSaved([]); reload(); }), [reload]);
   if (!data) return <Status state={state} />;
-  const { connections, save } = data, n = connections.length, local = save.mode === "local", canSave = local || save.mode === "hosted";
+  const { save } = data, connections = only ? data.connections.filter((c) => only.includes(c.name)) : data.connections, n = connections.length, local = save.mode === "local", canSave = local || save.mode === "hosted";
   const where = data.environment === "local" ? "on this computer" : data.environment === "preview" ? "in Preview" : "in Production";
   const stateOf = (c: Connection) => (saved.includes(c.name) && !(local && c.set) ? "saved" : c.set ? "set" : "missing");
   const labels = { set: "Set", missing: "Missing", saved: local ? "Saved, getting ready" : "Saved, going live" };
   const missing = connections.filter((c) => stateOf(c) === "missing").length, pending = connections.some((c) => stateOf(c) === "saved");
-  const summary = !n ? "No connections yet. Your agent lists them in .env.example."
+  const summary = only && !only.length ? "This workflow doesn't list the keys it uses yet."
+    : !n ? (only ? "None of the keys this workflow uses is in .env.example yet." : "No connections yet. Your agent lists them in .env.example.")
     : missing ? `${missing} of ${n} ${n === 1 ? "key isn't" : "keys aren't"} set ${where}.`
     : pending ? `Your workflows can use the keys you saved ${local ? "in a few seconds" : "in about a minute"}.`
-    : `Every key is set ${where}.`;
+    : `Every key ${only ? "this workflow uses " : ""}is set ${where}.`;
   const close = () => { setEditing(null); requestAnimationFrame(() => trigger.current?.focus()); };
   const done = (c: Connection, r: Saved) => {
     close(); reload();
@@ -46,13 +47,16 @@ export function ConnectionsView() {
   };
   return (
     <div className="connections-view">
-      <div className="title-row">
-        <h1>Connections</h1>
-        {save.mode === "link" && <a className="button" href={save.settingsUrl} target="_blank" rel="noreferrer">Open in Vercel</a>}
-      </div>
-      <p className="subtitle" role="status">{summary}</p>
+      {only ? <div className="title-row"><p role="status">{summary}</p><Link className="button" href="/connections">All connections</Link></div> : <>
+        <div className="title-row">
+          <h1>Connections</h1>
+          {save.mode === "link" && <a className="button" href={save.settingsUrl} target="_blank" rel="noreferrer">Open in Vercel</a>}
+        </div>
+        <p className="subtitle" role="status">{summary}</p>
+      </>}
       <div className="page">
         <Status state={state} />
+        {only && !only.length && <p className="notice">Ask your agent to declare this workflow's connections, then they show here with whether each is set.</p>}
         {data.tokenWarning && <p className="banner warn">{data.tokenWarning}</p>}
         {save.mode === "off" && <p className="banner">{save.reason}</p>}
         {note && <p className="banner" role="status">{note}</p>}

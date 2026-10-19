@@ -4,7 +4,7 @@
 This repo is the company's go-to-market project: an ordinary Next.js app on `@eliasstravik/gtm`, deployed as one Vercel project. `npx @eliasstravik/gtm init` rewrites this block; write company notes outside it.
 
 - `context/`: what the company knows (company.md, ICPs, personas, voice), Markdown in any shape. The Console's Context view shows it; the first heading of `context/company.md` is the company name.
-- `workflows/`: Workflow SDK workflows, each registered by name in `workflows/index.ts`. Lasting results go in the workflow's own tables in `db/schema.ts` (schema `public`; schema `gtm` is ours).
+- `workflows/`: Workflow SDK workflows, each registered by name in `workflows/index.ts`, with the description, tables, keys and business diagram the Console shows (docs: workflows). Lasting results go in the workflow's own tables in `db/schema.ts` (schema `public`; schema `gtm` is ours).
 - `.env.example`: every connection name with a one-line comment above it. Values live in `.env.local` (local) or Vercel's env (live), never in git.
 - `.agents/skills/`: this company's own project skills.
 - `proxy.ts`, `app/layout.tsx`, `app/[[...path]]/page.tsx`, `app/api/gtm/[...path]/route.ts` and `public/_gtm/probe.txt` wire in the Console and its guards.

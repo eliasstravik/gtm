@@ -7,15 +7,24 @@ import { environment, isHosted, safeEqual, value } from "../shared/env.js";
 import { cronSchedules } from "../shared/scan.js";
 import { HttpError, json } from "./http.js";
 
-/** The registry `workflows/index.ts` exports: name → workflow function. */
-export type Registry = Record<string, (...args: any[]) => Promise<unknown>>;
+type WorkflowFn = (...args: any[]) => Promise<unknown>;
+/** One box of a workflow's diagram: a business step in plain words, not code. */
+export type DiagramNode = { id: string; label: string; kind?: "input" | "action" | "decision" | "output"; explanation?: string; details?: Record<string, string | undefined> };
+/** What the Console shows about a workflow, written by the agent next to it. It never changes how the workflow runs. */
+export type About = {
+  description?: string; tables?: string[]; connections?: string[];
+  diagram?: { nodes: DiagramNode[]; edges: { source: string; target: string; label?: string }[] };
+};
+/** The registry `workflows/index.ts` exports: name → workflow function, or `{ run: workflowFn, ...About }`. */
+export type Registry = Record<string, WorkflowFn | ({ run: WorkflowFn } & About)>;
+const runOf = (e: Registry[string] | undefined) => (typeof e === "function" ? e : e?.run);
 
 type World = Awaited<ReturnType<typeof getWorld>>;
 type RunRow = { runId: string; status: string; workflowName: string; errorCode?: string | null; createdAt: Date;
   startedAt?: Date | null; completedAt?: Date | null };
 
 function workflow(workflows: Registry, name: string) {
-  const fn = Object.hasOwn(workflows, name) ? workflows[name] : undefined;
+  const fn = Object.hasOwn(workflows, name) ? runOf(workflows[name]) : undefined;
   if (typeof fn !== "function") throw new HttpError(404, `No workflow named "${name}" in workflows/index.ts`);
   return fn;
 }
@@ -60,12 +69,15 @@ const vercelUrl = (path: string, title: string) =>
 
 /** workflowId (what runs record as workflowName; the SWC transform sets it on each function) ↔ registry name. */
 function ids(workflows: Registry) {
-  const byId = new Map(Object.entries(workflows).map(([name, fn]) => [(fn as { workflowId?: string }).workflowId ?? name, name]));
+  const byId = new Map(Object.entries(workflows).map(([name, e]) => [(runOf(e) as { workflowId?: string }).workflowId ?? name, name]));
   const name = (id: string) => byId.get(id) ?? parseWorkflowName(id)?.shortName ?? id;
   return { name, id: (n: string) => [...byId].find(([, v]) => v === n)?.[0] };
 }
 
-/** GET /workflows → { workflows: [{ name, schedule, lastRun }], runsUrl }; lastRun from the newest 100 runs, else null. */
+/**
+ * GET /workflows → { workflows: [{ name, schedule, lastRun, ...About }], runsKnown, runsUrl }; lastRun from the newest
+ * 100 runs, else null.
+ */
 export async function workflowsList(workflows: Registry): Promise<Response> {
   const crons = schedules(), { name } = ids(workflows);
   const page = await getWorld().then((w) => listRuns(w, { pagination: { limit: 100, sortOrder: "desc" } })).catch((error) => {
@@ -79,7 +91,10 @@ export async function workflowsList(workflows: Registry): Promise<Response> {
     return r ? { id: r.runId, status: r.status, createdAt: iso(r.createdAt), startedAt: iso(r.startedAt), completedAt: iso(r.completedAt) } : null;
   };
   return json({
-    workflows: Object.keys(workflows).map((n) => ({ name: n, schedule: crons.get(n) ?? null, lastRun: lastRun(n) })),
+    workflows: Object.entries(workflows).map(([n, e]) => {
+      const { run: _, ...about } = typeof e === "function" ? { run: e } : e;
+      return { name: n, schedule: crons.get(n) ?? null, lastRun: lastRun(n), ...about };
+    }),
     runsKnown: page != null, runsUrl: vercelUrl("", "Workflow+runs"),
   });
 }

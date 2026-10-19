@@ -2,9 +2,43 @@
 
 ## The registry
 
-`workflows/index.ts` exports `workflows = { <name>: workflowFn }`. The key is the workflow's name everywhere:
-`npx @eliasstravik/gtm run <name>`, `/api/gtm/start/<name>`, `/api/gtm/cron/<name>` and the Workflows view.
-gtm starts only registered workflows; `npx @eliasstravik/gtm check` reports a broken registry.
+`workflows/index.ts` exports `workflows = { <name>: workflowFn }` (typed `satisfies Registry`, from
+`@eliasstravik/gtm/api`). The key is the workflow's name everywhere: `npx @eliasstravik/gtm run <name>`,
+`/api/gtm/start/<name>`, `/api/gtm/cron/<name>` and the Console. gtm starts only registered workflows;
+`npx @eliasstravik/gtm check` reports a broken registry.
+
+## What the Console shows about a workflow
+
+An entry can also be `{ run: workflowFn, description, tables, connections, diagram }`; every field but `run` is
+optional and none changes how the workflow runs. The workflow's page in the Console has four tabs:
+
+- **Diagram**: `description` (one or two plain sentences: what it does, for whom, its limits), how it starts, and
+  `diagram`, the business steps as `{ nodes: [{ id, label, kind, explanation, details }], edges: [{ source,
+  target, label }] }`. `kind` is `input`, `action`, `decision` or `output`; a decision's edges carry labels ("Yes",
+  "No"); `details` is a few short `{ name: text }` facts (provider, caching, limits). Write it for the GTM team,
+  not as code; update it in the same change as the workflow.
+- **Runs**: this workflow's runs.
+- **Data**: the tables it writes, named in `tables` (schema `public`).
+- **Connections**: the `.env.example` names it reads, in `connections`, set or missing here.
+
+```ts
+export const workflows = {
+  "qualify-companies": {
+    run: qualifyCompanies,
+    description: "Scores each company against our ICPs and keeps the verdict.",
+    tables: ["qualified_companies"],
+    connections: ["FIRECRAWL_API_KEY"],
+    diagram: {
+      nodes: [
+        { id: "in", label: "Company domains", kind: "input", explanation: "The domains given to the run." },
+        { id: "fit", label: "Fits an ICP?", kind: "decision", explanation: "Read the site and compare it with context/icps." },
+        { id: "save", label: "Save the verdict", kind: "output", explanation: "One row per domain in qualified_companies." },
+      ],
+      edges: [{ source: "in", target: "fit" }, { source: "fit", target: "save", label: "Yes" }],
+    },
+  },
+} satisfies Registry;
+```
 
 ## Results and runs
 

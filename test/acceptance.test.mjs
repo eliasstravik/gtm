@@ -162,7 +162,7 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         assert.ok(sockets.some((x) => x.port === lock.port), `the PGlite server (lock port ${lock.port}) is not in the tree`);
       });
       await t.test("the Console's views (and /) render as HTML", async () => {
-        for (const view of ["/", "/context", "/workflows", "/workflows/record", "/runs", "/data", "/connections"]) {
+        for (const view of ["/", "/context", "/workflows", "/workflows/record", "/workflows/record?view=data", "/runs", "/data", "/connections"]) {
           const r = await get(view);
           assert.equal(r.status, 200, `GET ${view} → ${r.status}: ${r.text.slice(0, 300)}`);
           assert.match(String(r.headers["content-type"]), /text\/html/, view);
@@ -255,7 +255,10 @@ export async function record(input: { name: string }) {
 }
 `);
     const registry = read("workflows/index.ts");
-    const registered = registry.replace(/export const workflows\s*=\s*\{\s*\}/, "export const workflows = { record }");
+    // The entry form with what the Console shows about it (workflows.md); `run` is what starts.
+    const entry = `{ run: record, description: "Writes one row.", tables: ["records"], connections: ["ACME_API_KEY"],
+    diagram: { nodes: [{ id: "in", label: "A name", kind: "input" }, { id: "save", label: "Save it", kind: "output" }], edges: [{ source: "in", target: "save" }] } }`;
+    const registered = registry.replace(/export const workflows\s*=\s*\{\s*\}/, `export const workflows = { record: ${entry} }`);
     assert.notEqual(registered, registry, `cannot register in workflows/index.ts:\n${registry}`);
     write("workflows/index.ts", `import { record } from "./record";\n${registered}`);
 
@@ -267,8 +270,10 @@ export async function record(input: { name: string }) {
     });
 
     await t.test("gtm run waits and prints the return value; the run shows in Workflows", async () => {
-      const listed = await poll(async () => (await json("/api/gtm/workflows")).workflows.some((w) => w.name === "record"), { timeout: 2 * MIN });
+      const listed = await poll(async () => (await json("/api/gtm/workflows")).workflows.find((w) => w.name === "record"), { timeout: 2 * MIN });
       assert.ok(listed, "record never appeared in /api/gtm/workflows");
+      assert.deepEqual([listed.description, listed.tables, listed.connections, listed.diagram?.nodes.length], ["Writes one row.", ["records"], ["ACME_API_KEY"], 2]);
+      assert.equal(listed.run, undefined, "the function itself is not sent");
       s.marker = `acceptance-row-${Date.now()}`;
       const result = assertOk(await gtm(["run", "record", "--input", JSON.stringify({ name: s.marker })], { env: { GTM_PORT: String(PORT) } }), "gtm run");
       assert.ok(result.stdout.includes(s.marker), `return value not printed:\n${result.output}`);
@@ -302,6 +307,8 @@ export async function record(input: { name: string }) {
       const found = await json(`/api/gtm/data/records?q=${s.marker}&columns=name`);
       assert.deepEqual([found.total, found.columns, found.rows], [1, ["name"], [[s.marker]]]);
       assert.equal((await json("/api/gtm/data/records?q=no-such-row-anywhere")).total, 0);
+      const bad = await get("/api/gtm/data/records?field=id&operator=gt&value=abc");
+      assert.equal(bad.status, 400, `a number filter with text → ${bad.status}: ${bad.text.slice(0, 200)}`);
       const csv = await get("/api/gtm/data/records/csv");
       assert.equal(csv.status, 200);
       assert.match(String(csv.headers["content-type"]), /text\/csv/);
