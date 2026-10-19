@@ -5,7 +5,9 @@
 import { isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
 import { BYPASS, carriesBypass } from "../shared/request.js";
 import { listConnections, releaseStatus, saveConnection } from "./connections.js";
+import { database } from "./database.js";
 import { HttpError, json } from "./http.js";
+import { inspector } from "./inspector.js";
 import { contextFile, contextList, dataExport, dataPage, dataTables, shell } from "./read.js";
 import { cronRun, type Registry, runsList, runStatus, startRun, workflowsList } from "./runs.js";
 
@@ -55,6 +57,8 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
         if (req.method === "POST") return await saveConnection(req);
         if (get) return await listConnections(req);
       }
+      if (head === "inspector") return await inspector(req, rest);
+      if (head === "database") return await database(req, rest);
       if (!get) throw new HttpError(405, "The Console is read-only");
       if (head === "shell" && !rest.length) return await shell();
       if (head === "release" && !rest.length) return await releaseStatus(url.searchParams);
