@@ -15,8 +15,12 @@ export function releaseStarted(id: string) {
   try { localStorage.setItem(KEY, JSON.stringify({ id, at: Date.now() })); } catch { /* This tab still shows it. */ }
   dispatchEvent(new Event(KEY));
 }
-/** Calls `fn` when the followed redeploy is live or failed, so a view reads again what it changed; returns the unsubscribe. */
-export const onReleaseSettled = (fn: () => void) => (addEventListener(SETTLED, fn), () => removeEventListener(SETTLED, fn));
+/** Calls `fn` with "live" or "failed" when the followed redeploy settles, so a view reads again what it changed; returns the unsubscribe. */
+export function onReleaseSettled(fn: (state?: Release["state"]) => void) {
+  const on = (e: Event) => fn((e as CustomEvent<Release["state"] | undefined>).detail);
+  addEventListener(SETTLED, on);
+  return () => removeEventListener(SETTLED, on);
+}
 
 /**
  * The followed redeploy's state, one poller for every badge on the page (the sidebar's and the top bar's): read every
@@ -33,7 +37,7 @@ async function check() {
   const next = await api<{ release: Release | null }>(`release?id=${encodeURIComponent(id)}`).then((r) => r.release, () => undefined);
   if (following() !== id) return;
   if (next === undefined || next?.state === "updating") return void (timer = setTimeout(check, 5000));
-  settled = id; clearTimeout(fade); show(next); dispatchEvent(new Event(SETTLED));
+  settled = id; clearTimeout(fade); show(next); dispatchEvent(new CustomEvent(SETTLED, { detail: next?.state }));
   if (next?.state === "live") fade = setTimeout(() => show(null), 8000);
 }
 if (typeof window !== "undefined") { addEventListener(KEY, check); addEventListener("storage", (e) => e.key === KEY && check()); }

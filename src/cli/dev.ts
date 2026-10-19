@@ -21,6 +21,9 @@ export async function dev(args: string[]): Promise<void> {
   const own: NodeJS.ProcessEnv = { ...process.env, GTM_DEV: "1" };
   process.env.GTM_DEV = "1"; // never hosted, whatever env files say
   const dir = findProject();
+  // Connections notes the keys this shell sets (names only): they win over .env.local.
+  const files = [".env.example", ".env.local"].map((f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), "utf8") : "")).join("\n");
+  own.GTM_SHELL_KEYS = [...new Set([...files.matchAll(/^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=/gm)].map((m) => m[1]))].filter((n) => value(n)).join(",");
   const port = appPort(loadEnv(dir, true));
   const next = nextBin(dir);
   let local: LocalDatabase | undefined;

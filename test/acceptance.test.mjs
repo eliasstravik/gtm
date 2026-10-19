@@ -24,7 +24,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import {
   MIN, assertOk, cleanEnv, diffSnapshots, extractCli, httpsStub, killInside, listeningSockets, makeWorkDir, packPackage, poll,
-  portOpen, processTree, request, run, setLogDir, snapshot, sql, startProcess, stopAll, tail, waitForHttp, within,
+  portOpen, processTree, REPO, request, run, setLogDir, snapshot, sql, startProcess, stopAll, tail, vercelStub, waitForHttp, within,
 } from "./helpers.mjs";
 
 const PORT = Number(process.env.GTM_TEST_PORT ?? 4710); // gtm dev
@@ -359,19 +359,21 @@ export async function record(input: { name: string }) {
     });
   });
 
-test("7.4 Connections: lists .env.example; Save writes .env.local and flips to set; values round-trip; refusals",
+test("7.4 Connections: lists .env.example and declared names; Save writes .env.local and flips to set; values round-trip; add, rename, delete; refusals",
   { timeout: 15 * MIN }, async (t) => {
     if (!ready()) return t.skip("no project (7.1 failed)");
     await ensureDev();
     const example = read(".env.example");
     let add = "\n# Acme CRM API key (acceptance check)\nACME_API_KEY=\n# Acme webhook signing token (acceptance check)\nACME_WEBHOOK_TOKEN=\n";
-    // Refused names listed too, so their refusal is the name rule and not "unlisted".
+    // Refused names listed too, so their refusal is the name rule.
     if (!/^DATABASE_URL=/m.test(example)) add += "# Postgres connection string\nDATABASE_URL=\n";
     if (!/^SLACK_SIGNING_SECRET=/m.test(example)) add += "# Slack signing secret\nSLACK_SIGNING_SECRET=\n";
-    fs.appendFileSync(file(".env.example"), add);
+    fs.appendFileSync(file(".env.example"), `${add}\nACME_BARE_KEY=\n`);
     const origin = { origin: `http://127.0.0.1:${PORT}`, "sec-fetch-site": "same-origin" };
-    const save = (name, value) => get("/api/gtm/connections", { method: "POST", headers: origin, body: { name, value } });
-    const status = async (name) => (await json("/api/gtm/connections")).connections.find((c) => c.name === name);
+    const change = (body) => get("/api/gtm/connections", { method: "POST", headers: origin, body });
+    const save = (name, value) => change({ name, value });
+    const list = async () => (await json("/api/gtm/connections")).connections;
+    const status = async (name) => (await list()).find((c) => c.name === name);
     /** The value as Next would load it from the project's env files (in a fresh process). */
     const loaded = async (name) => {
       const r = assertOk(await run("node", ["-e", `const { loadEnvConfig } = require("@next/env");
@@ -380,12 +382,16 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
       return JSON.parse(r.stdout);
     };
 
-    await t.test("lists the .env.example names with their comments", async () => {
+    await t.test("lists the .env.example names with their comments, the workflows using each, and what can change", async () => {
       const api = await status("ACME_API_KEY");
       assert.ok(api, "ACME_API_KEY listed");
       assert.match(api.description, /Acme CRM API key/);
-      assert.equal(api.set, false);
+      assert.deepEqual([api.set, api.state, api.actions], [false, "missing", ["save", "rename", "delete"]]);
+      if (s.runId) assert.deepEqual(api.usedBy, ["record"], "7.3's record declares ACME_API_KEY");
       assert.equal((await status("ACME_WEBHOOK_TOKEN"))?.set, false);
+      const slack = await status("SLACK_SIGNING_SECRET");
+      assert.deepEqual([slack?.reserved, slack?.actions], [true, []], "a refused name is listed without actions");
+      assert.ok(!(await list()).some((c) => c.name.startsWith("GTM_")), "GTM_* from .env.local is not listed");
     });
 
     const tricky = 'p$ss"wo\\rd$HOME-${PATH}\\z';
@@ -395,22 +401,51 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
         const r = await save(name, value);
         assert.equal(r.status, 200, `Save ${name} → ${r.status}: ${r.text}`);
         assert.equal(r.json().ok, true);
+        assert.ok(!r.text.includes(value), "the value is not echoed");
         assert.match(read(".env.local"), new RegExp(`^${name}=`, "m"));
         assert.ok(await poll(async () => (await status(name))?.set, { timeout: 30_000 }), `${name} never showed as set`);
         assert.equal(await loaded(name), value, `${name} round-trip through @next/env`);
       }
+      assert.equal(fs.statSync(file(".env.local")).mode & 0o777, 0o600, ".env.local is owner-only");
     });
 
-    await t.test("Save refuses DATABASE_URL, SLACK_SIGNING_SECRET, an unlisted name and a multi-line value", async () => {
-      const before = read(".env.local");
-      for (const [name, value] of [["DATABASE_URL", "postgres://x@db.example/x"], ["SLACK_SIGNING_SECRET", "abc"],
-        ["NOT_IN_ENV_EXAMPLE", "abc"], ["ACME_API_KEY", "line1\nline2"]]) {
-        const r = await save(name, value);
-        assert.ok(r.status >= 400 && r.status < 500, `Save ${name}=${JSON.stringify(value)} → ${r.status}: ${r.text}`);
+    await t.test("Add appends the name and label to .env.example; rename rewrites or inserts the comment; delete removes both", async () => {
+      const r = await change({ action: "save", name: "ACME_NEW_KEY", value: "new-$value", label: "Acme new (acceptance)" });
+      assert.equal(r.status, 200, r.text);
+      assert.match(read(".env.example"), /^# Acme new \(acceptance\)\nACME_NEW_KEY=\n/m);
+      assert.match(read(".env.local"), /^ACME_NEW_KEY='new-\\\$value'$/m);
+      assert.ok(await poll(async () => (await status("ACME_NEW_KEY"))?.set, { timeout: 30_000 }), "ACME_NEW_KEY never showed as set");
+      assert.equal((await status("ACME_NEW_KEY")).description, "Acme new (acceptance)");
+      const envLocal = read(".env.local");
+      assert.equal((await change({ action: "rename", name: "ACME_NEW_KEY", label: "Acme renamed" })).status, 200);
+      assert.match(read(".env.example"), /^# Acme renamed\nACME_NEW_KEY=$/m);
+      assert.ok(!read(".env.example").includes("Acme new (acceptance)"), "the old comment is replaced");
+      assert.equal(read(".env.local"), envLocal, "rename leaves .env.local alone");
+      assert.equal((await change({ action: "rename", name: "ACME_BARE_KEY", label: "Acme bare" })).status, 200);
+      assert.match(read(".env.example"), /\n\n# Acme bare\nACME_BARE_KEY=\n/, "a comment is inserted above a bare name");
+      const deleted = await change({ action: "delete", name: "ACME_NEW_KEY" });
+      assert.equal(deleted.status, 200, deleted.text);
+      assert.ok(!/ACME_NEW_KEY|Acme renamed/.test(read(".env.example")), "name and comment gone from .env.example");
+      assert.ok(!read(".env.local").includes("ACME_NEW_KEY"), "gone from .env.local");
+      assert.ok(!(await list()).some((c) => c.name === "ACME_NEW_KEY"), "gone from the list");
+      assert.equal(await loaded("ACME_API_KEY"), tricky, "other lines kept");
+      assert.match(read(".env.example"), /# Acme CRM API key \(acceptance check\)\nACME_API_KEY=/, "other names kept");
+      assert.equal((await change({ action: "delete", name: "ACME_NEVER_LISTED" })).status, 404);
+      assert.ok(!fs.readdirSync(s.dir).some((f) => f.startsWith(".env.gtm-")), "no temp files left");
+    });
+
+    await t.test("refuses DATABASE_URL, SLACK_SIGNING_SECRET, GTM_*, a bad key, multi-line values, redeploy and unknown actions", async () => {
+      const before = [read(".env.local"), read(".env.example")];
+      for (const body of [{ name: "DATABASE_URL", value: "postgres://x@db.example/x" }, { name: "SLACK_SIGNING_SECRET", value: "abc" },
+        { action: "delete", name: "SLACK_SIGNING_SECRET" }, { action: "rename", name: "GTM_PORT", label: "x" }, { name: "1BAD", value: "abc" },
+        { name: "ACME_API_KEY", value: "line1\nline2" }, { action: "rename", name: "ACME_API_KEY", label: "two\nlines" },
+        { action: "redeploy" }, { action: "drop", name: "ACME_API_KEY" }]) {
+        const r = await change(body);
+        assert.ok(r.status >= 400 && r.status < 500, `${JSON.stringify(body)} → ${r.status}: ${r.text}`);
         assert.equal(r.json().ok, false);
         assert.equal(typeof r.json().error, "string");
       }
-      assert.equal(read(".env.local"), before, ".env.local unchanged by refused saves");
+      assert.deepEqual([read(".env.local"), read(".env.example")], before, "files unchanged by refused changes");
       assert.equal(await loaded("ACME_API_KEY"), tricky);
     });
   });
@@ -437,10 +472,12 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       const r = await get(`/api/gtm/start/${workflow}`, { method: "POST", headers, body: { name: "evil" } });
       assert.equal(r.status, 403, `${JSON.stringify(headers)} → ${r.status}: ${r.text.slice(0, 300)}`);
       // The same guard covers every route (§3): Save and the Workflow SDK's own endpoint.
-      const envLocal = exists(".env.local") ? read(".env.local") : null;
-      const save = await get("/api/gtm/connections", { method: "POST", headers, body: { name: "ACME_API_KEY", value: "evil" } });
-      assert.equal(save.status, 403, `Save ${JSON.stringify(headers)} → ${save.status}`);
-      assert.equal(exists(".env.local") ? read(".env.local") : null, envLocal, ".env.local unchanged");
+      const files = () => [".env.local", ".env.example"].map((f) => (exists(f) ? read(f) : null)), before = files();
+      for (const body of [{ name: "ACME_API_KEY", value: "evil" }, { action: "delete", name: "ACME_API_KEY" }, { action: "rename", name: "ACME_API_KEY", label: "evil" }]) {
+        const r = await get("/api/gtm/connections", { method: "POST", headers, body });
+        assert.equal(r.status, 403, `Connections ${body.action ?? "save"} ${JSON.stringify(headers)} → ${r.status}`);
+      }
+      assert.deepEqual(files(), before, ".env.local and .env.example unchanged");
       const studio = await get("/api/gtm/database/open", { method: "POST", headers, body: {} });
       assert.equal(studio.status, 403, `Open database ${JSON.stringify(headers)} → ${studio.status}`);
       const flow = await get("/.well-known/workflow/v1/flow", { method: "POST", headers, body: {} });
@@ -518,10 +555,95 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
     }
   });
 
+  await t.test("hosted Connections against a stubbed Vercel: list, save, rename, delete, redeploy, read-only rows; owner session and CSRF required", async () => {
+    // The same build as above. The stub plays the production domain's login wall (the probe answers 200 only with the
+    // owner's cookie) and the Vercel API, which test/vercel-fetch.mjs points the app's calls at.
+    const host = `127.0.0.1:${PROBE_PORT}`, b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const owner = `_vercel_jwt=${b64({ alg: "HS256" })}.${b64({ userId: "u1", ownerId: "team_test", aud: "127.0.0.1", sub: "sso-protection" })}.sig`;
+    const { state, handler } = vercelStub({ cookie: owner });
+    state.envs.push(
+      { id: "env_hub", key: "HUBSPOT_TOKEN", type: "sensitive", target: ["production"], comment: "HubSpot" },
+      { id: "env_openai", key: "OPENAI_API_KEY", type: "encrypted", target: ["production", "preview"] },
+      { id: "env_redis", key: "UPSTASH_REDIS_REST_TOKEN", type: "encrypted", target: ["production"], configurationId: "icfg_1" },
+      { id: "env_preview", key: "PREVIEW_ONLY_KEY", type: "encrypted", target: ["preview"] },
+      { id: "env_gtm", key: "GTM_VERCEL_TOKEN", type: "sensitive", target: ["production"] },
+    );
+    const stub = await httpsStub(s.work, PROBE_PORT, handler);
+    const next = startProcess(file("node_modules/.bin/next"), ["start", "-H", "127.0.0.1", "-p", String(START_PORT)], {
+      cwd: s.dir, name: "next-start-connections",
+      env: cleanEnv({
+        VERCEL_ENV: "production", VERCEL_DEPLOYMENT_ID: "dpl_test", VERCEL_PROJECT_ID: "prj_test", VERCEL_PROJECT_PRODUCTION_URL: host,
+        GTM_VERCEL_TOKEN: "tok_test", DATABASE_URL: s.dbUrl, NODE_EXTRA_CA_CERTS: stub.caFile,
+        NODE_OPTIONS: `--import ${path.join(REPO, "test", "vercel-fetch.mjs")}`, GTM_TEST_VERCEL_API: `https://${host}`,
+      }),
+    });
+    const writes = () => state.calls.filter((c) => !c.startsWith("GET ")).length;
+    try {
+      await waitForHttp(START_PORT, "/_gtm/probe.txt", next);
+      const at = (p, { headers = {}, ...opts } = {}) => request(START_PORT, p, { host, ...opts, headers: { cookie: owner, ...headers } });
+      const listed = await at("/api/gtm/connections");
+      assert.equal(listed.status, 200, listed.text.slice(0, 300));
+      const { connections, save, settingsUrl } = listed.json(), row = (name) => connections.find((c) => c.name === name);
+      assert.equal(save.mode, "hosted", JSON.stringify(save));
+      assert.equal(settingsUrl, "https://vercel.com/acme/gtm-acme/settings/environment-variables");
+      assert.deepEqual([row("HUBSPOT_TOKEN")?.description, row("HUBSPOT_TOKEN")?.state, row("HUBSPOT_TOKEN")?.actions], ["HubSpot", "saved", ["save", "rename", "delete"]]);
+      for (const name of ["OPENAI_API_KEY", "UPSTASH_REDIS_REST_TOKEN"]) assert.deepEqual([row(name)?.state, row(name)?.actions], ["readonly", []], name);
+      assert.ok(!row("PREVIEW_ONLY_KEY") && !row("GTM_VERCEL_TOKEN"), "preview-only and refused variables are not listed");
+      assert.deepEqual(row("ACME_API_KEY")?.actions, ["save"], ".env.example names can be saved; there is nothing in Vercel to rename");
+
+      const headers = { origin: `https://${host}`, "sec-fetch-site": "same-origin", "x-gtm-csrf": save.csrf };
+      const post = (body, h = headers) => at("/api/gtm/connections", { method: "POST", headers: h, body });
+      const body = { action: "save", name: "ACME_NEW_KEY", value: "hosted-value-1", label: "Acme new" };
+      for (const [what, h] of [["no CSRF token", { ...headers, "x-gtm-csrf": "" }], ["a foreign Origin", { ...headers, origin: "https://evil.test" }],
+        ["cross-site", { ...headers, "sec-fetch-site": "cross-site" }], ["no owner session", { ...headers, cookie: "" }]]) {
+        refused(await post(body, h), `save with ${what}`);
+      }
+      assert.equal((await request(START_PORT, "/api/gtm/connections", { host })).json().save.mode, "off", "no session: changes off");
+      assert.equal(writes(), 0, "refused requests wrote nothing to Vercel");
+
+      const saved = await post(body);
+      assert.equal(saved.status, 200, saved.text);
+      assert.deepEqual([saved.json().redeploy, saved.json().id], ["started", "dpl_new1"]);
+      assert.ok(!saved.text.includes("hosted-value-1"), "the value is not echoed");
+      assert.equal(state.values.ACME_NEW_KEY, "hosted-value-1");
+      assert.deepEqual(state.envs.find((e) => e.key === "ACME_NEW_KEY"), { id: "env_ACME_NEW_KEY", key: "ACME_NEW_KEY", type: "sensitive", target: ["production"], comment: "Acme new" });
+      assert.equal((await at("/api/gtm/release?id=dpl_new1")).json().release?.state, "live");
+
+      const deploys = () => state.calls.filter((c) => c === "POST /v13/deployments").length, before = deploys();
+      assert.equal((await post({ action: "rename", name: "HUBSPOT_TOKEN", label: "HubSpot (Production)" })).status, 200);
+      assert.equal(state.envs.find((e) => e.key === "HUBSPOT_TOKEN").comment, "HubSpot (Production)");
+      assert.equal(deploys(), before, "a rename redeploys nothing");
+      const deleted = await post({ action: "delete", name: "HUBSPOT_TOKEN" });
+      assert.deepEqual([deleted.status, deleted.json().redeploy], [200, "started"]);
+      assert.ok(!state.envs.some((e) => e.key === "HUBSPOT_TOKEN"), "HUBSPOT_TOKEN deleted");
+
+      for (const [b, status] of [[{ name: "OPENAI_API_KEY", value: "x" }, 409], [{ action: "delete", name: "UPSTASH_REDIS_REST_TOKEN" }, 409],
+        [{ action: "rename", name: "ACME_API_KEY", label: "x" }, 404], [{ name: "AI_GATEWAY_API_KEY", value: "x" }, 400], [{ name: "GTM_X", value: "x" }, 400]]) {
+        const r = await post(b);
+        assert.equal(r.status, status, `${JSON.stringify(b)} → ${r.status}: ${r.text}`);
+      }
+
+      state.redeploy = "fail";
+      const failed = await post({ name: "ACME_NEW_KEY", value: "hosted-value-2" });
+      assert.deepEqual([failed.status, failed.json().redeploy], [200, "failed"], failed.text);
+      state.redeploy = "ok";
+      const upserts = () => state.calls.filter((c) => c === "POST /v10/projects/prj_test/env").length, sent = upserts();
+      const retried = await post({ action: "redeploy" });
+      assert.deepEqual([retried.status, retried.json().redeploy], [200, "started"], retried.text);
+      assert.equal(upserts(), sent, "Redeploy sends no value");
+    } finally {
+      await next.stop();
+      await stub.close();
+    }
+  });
+
   await t.test(`GTM_ALLOWED_HOSTS=${BOX}: that host is admitted, but start and runs are refused on it`, async () => {
     await stopDev();
-    await startDev({ GTM_ALLOWED_HOSTS: BOX });
+    // A key the shell sets wins over .env.local; gtm dev names it so Connections can say so.
+    await startDev({ GTM_ALLOWED_HOSTS: BOX, ACME_WEBHOOK_TOKEN: "from-shell" });
     try {
+      const shellRows = (await json("/api/gtm/connections")).connections.filter((c) => c.shell).map((c) => c.name);
+      assert.deepEqual(shellRows, ["ACME_WEBHOOK_TOKEN"], "only the shell's key is marked");
       assert.equal((await get("/context", { host: BOX })).status, 200, `/context on ${BOX}`);
       assert.equal((await get("/api/gtm/shell", { host: BOX })).status, 200, `/api/gtm/shell on ${BOX}`);
       const before = await runsCount();
