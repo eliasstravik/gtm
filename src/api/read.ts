@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
+import { parseSkill, SKILL_NAME, SKILLS_DIR } from "../shared/skill.js";
 import { exampleConnections } from "./connections.js";
 import { HttpError, json, toJson } from "./http.js";
 
@@ -31,30 +32,36 @@ export async function shell(): Promise<Response> {
   return json({ company, environment: environment(), database, deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null, connectionsMissing });
 }
 
-/** Repo-relative paths the Context view may show: context/**\/*.md; under "Skills", AGENTS.md and .agents/skills/*\/SKILL.md. */
-async function contextPaths(): Promise<{ context: string[]; skills: string[] }> {
+/**
+ * What the Context view may show: every context/**\/*.md, and under "Skills" each folder in .agents/skills that holds
+ * a SKILL.md, titled by its front matter `name` (else the folder) with its `description`. AGENTS.md is not context.
+ */
+async function contextPaths() {
   const files = await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), "context"), { recursive: true }).catch(() => [] as string[]);
   const context = files.filter((f) => f.endsWith(".md")).map((f) => `context/${f.split(path.sep).join("/")}`).sort();
-  const skills = (await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), ".agents/skills")).catch(() => [] as string[])).sort();
-  return { context, skills: ["AGENTS.md", ...skills.map((s) => `.agents/skills/${s}/SKILL.md`)] };
+  const folders = (await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), SKILLS_DIR)).catch(() => [] as string[])).filter((f) => SKILL_NAME.test(f)).sort();
+  const skills = (await Promise.all(folders.map(async (folder) => {
+    const p = `${SKILLS_DIR}/${folder}/SKILL.md`, markdown = await read(p);
+    const { name, description } = parseSkill(markdown ?? "");
+    return markdown == null ? [] : [{ path: p, title: name ?? folder, ...(description && { description }) }];
+  }))).flat();
+  return { context, skills };
 }
 
-/** GET /context → { groups: [{ name: "Context" | "Skills", files: [{ path, title }] }] } (missing files left out). */
+/** GET /context → { groups: [{ name: "Context" | "Skills", files: [{ path, title, description? }] }] } (missing files left out). */
 export async function contextList(): Promise<Response> {
   const { context, skills } = await contextPaths();
   const entry = async (p: string) => {
     const markdown = await read(p);
-    const name = p.endsWith("/SKILL.md") ? p.split("/").at(-2)! : path.basename(p, ".md");
-    return markdown == null ? [] : [{ path: p, title: heading(markdown) ?? name }];
+    return markdown == null ? [] : [{ path: p, title: heading(markdown) ?? path.basename(p, ".md") }];
   };
-  const files = async (paths: string[]) => (await Promise.all(paths.map(entry))).flat();
-  return json({ groups: [{ name: "Context", files: await files(context) }, { name: "Skills", files: await files(skills) }] });
+  return json({ groups: [{ name: "Context", files: (await Promise.all(context.map(entry))).flat() }, { name: "Skills", files: skills }] });
 }
 
 /** GET /context/file?path= → { path, markdown, githubUrl }; only paths the listing returns (no traversal). */
 export async function contextFile(file: string | null): Promise<Response> {
   const { context, skills } = await contextPaths();
-  const markdown = file && [...context, ...skills].includes(file) ? await read(file) : null;
+  const markdown = file && [...context, ...skills.map((s) => s.path)].includes(file) ? await read(file) : null;
   if (file == null || markdown == null) throw new HttpError(404, "No such context file");
   const { VERCEL_GIT_PROVIDER: git, VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: slug, VERCEL_GIT_COMMIT_REF: ref } = process.env;
   const segments = (s: string) => s.split("/").map(encodeURIComponent).join("/");

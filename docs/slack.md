@@ -9,8 +9,9 @@ The optional Slack agent is an ordinary eve agent in `agent/`, deployed in the s
 allowlist, the requester-only approval policy, calls to the app's API), `agent/tools/` (`start_run`, `get_run`,
 `github`), `agent/sandbox.ts` and `agent/skills` (a symlink to
 `../.agents/skills`, which eve follows, so the agent has the company's skills). eve loads every entry there
-as a skill, so `--slack` deletes `.agents/skills/.gitkeep`, and nothing but skills may go in that folder; a
-missing (not yet created) folder is fine. `withGtm` applies `withEve`
+as a skill, so `--slack` deletes `.agents/skills/.gitkeep`, and nothing but skill folders may go in that folder; a
+missing (not yet created) folder is fine. Add a skill in `.agents/skills/<name>/SKILL.md` (layout.md), never
+through `agent/skills`. `withGtm` applies `withEve`
 because `agent/` exists. With `agent/` present, `npm run dev` keeps eve's dev server on 127.0.0.1 too, or
 refuses to start.
 
