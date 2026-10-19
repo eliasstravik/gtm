@@ -1,0 +1,39 @@
+# Publishes @eliasstravik/gtm to npm when a version tag is pushed, through npm trusted publishing (OIDC): no npm token
+# is stored anywhere, and npm attaches provenance. A tag with a pre-release part (v0.0.2-rc.1) goes to `next`, any
+# other (v0.0.2) to `latest`. The tag must match package.json's version. Set up once with
+# `npm trust github @eliasstravik/gtm --repo eliasstravik/gtm --file release.yml --allow-publish` (README, Releasing).
+# It never commits or pushes; a workflow that does uses the noreply identity in AGENTS.md (Public repo).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@11.19.0
+
+      - name: Tag matches package.json
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, package.json $version"; exit 1; }
+          case "$version" in *-*) echo "DIST_TAG=next" >> "$GITHUB_ENV" ;; *) echo "DIST_TAG=latest" >> "$GITHUB_ENV" ;; esac
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm publish --access public --tag "$DIST_TAG"

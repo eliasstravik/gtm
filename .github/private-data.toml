@@ -1,0 +1,55 @@
+# Private data that must never reach this public repo (AGENTS.md, Public repo), on top of gitleaks' default rules
+# for keys and tokens. CI (.github/workflows/privacy.yml) runs both rule sets on every file in the history, every
+# commit message and every pull request's title and description. Separate from the defaults (no [extend]) because
+# their global allowlist hides home-folder paths. Locally:
+#   gitleaks git --log-opts=--all . && gitleaks git --config .github/private-data.toml --log-opts=--all .
+title = "gtm private data"
+
+[[rules]]
+id = "tailscale-name"
+description = "A Tailscale MagicDNS name (a machine on a private tailnet)"
+regex = '''(?i)\b[a-z0-9-]+\.[a-z0-9-]+\.ts\.net\b'''
+keywords = ["ts.net"]
+
+[[rules]]
+id = "tailscale-address"
+description = "A Tailscale (CGNAT 100.64.0.0/10) address"
+regex = '''\b100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b'''
+keywords = ["100."]
+
+[[rules]]
+id = "private-ip"
+description = "A private network address"
+regex = '''\b(?:10\.[0-9]{1,3}|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b'''
+keywords = ["10.", "192.168.", "172."]
+
+[[rules]]
+id = "deployment-hostname"
+description = "A real deployment or VM hostname (Vercel, exe.dev, ngrok)"
+regex = '''(?i)\b[a-z0-9-]+\.(?:vercel\.app|exe\.dev|exe\.xyz|ngrok\.io|ngrok-free\.app)\b'''
+keywords = ["vercel.app", "exe.dev", "exe.xyz", "ngrok"]
+
+[[rules]]
+id = "email"
+description = "An email address"
+regex = '''(?i)\b[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b'''
+keywords = ["@"]
+
+[[rules]]
+id = "local-path"
+description = "A path inside someone's home folder"
+regex = '''(?:/home/[a-z_][a-z0-9_.-]*/|/Users/[^/\s"'`]+/|[A-Za-z]:\\Users\\)'''
+keywords = ["/home/", "/users/", ":\\users\\"]
+
+[allowlist]
+description = "Placeholders and public addresses"
+regexes = [
+  '''box\.tail(?:1234)?\.ts\.net''',
+  '''noreply@anthropic\.com''',
+  '''[a-z0-9.+-]+@users\.noreply\.github\.com''',
+  '''\bnoreply@github\.com''',
+  '''@(?:example\.(?:com|org|net)|[a-z0-9-]+\.(?:test|invalid|example))\b''',
+  '''git@github\.com''',
+  '''/home/runner/''',
+  '''\bacme[a-z0-9-]*\.vercel\.app''',
+]

@@ -26,7 +26,7 @@ before(async () => {
     return [404, { error: "not found" }];
   });
   route("https://acme-gtm.vercel.app/", `http://127.0.0.1:${PORT}/prod/`);
-  route("https://acme-gtm-git-change-stravik.vercel.app/", `http://127.0.0.1:${PORT}/preview/`);
+  route("https://acme-gtm-git-change-acme.vercel.app/", `http://127.0.0.1:${PORT}/preview/`);
   process.env.GTM_PORT = String(PORT);
   startRun = (await template("tools/start_run")).default;
   getRun = (await template("tools/get_run")).default;
@@ -90,7 +90,7 @@ test("start_run locally: POST to gtm dev on 127.0.0.1:$GTM_PORT, no bypass heade
 test("start_run hosted: production domain with the automation bypass secret; a preview calls itself; refuses without the secret", { skip }, async () => {
   const restore = hosted({
     VERCEL_DEPLOYMENT_ID: "dpl_1", VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "acme-gtm.vercel.app",
-    VERCEL_URL: "acme-gtm-git-change-stravik.vercel.app", VERCEL_AUTOMATION_BYPASS_SECRET: "automation-secret",
+    VERCEL_URL: "acme-gtm-git-change-acme.vercel.app", VERCEL_AUTOMATION_BYPASS_SECRET: "automation-secret",
   });
   try {
     api.requests.length = 0;
