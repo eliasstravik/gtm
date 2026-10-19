@@ -67,11 +67,8 @@ export const PRODUCTION_DATABASE =
  * The stamp check used by db(), `gtm migrate` and `gtm dev`. `query` runs one SQL statement and returns its rows.
  * A database whose `gtm.meta` stamp names its own identity is refused unless this is hosted production.
  */
-export async function assertNotProduction(
-  query: (sql: string) => Promise<{ value: string }[]>,
-  url: string,
-  env: Env = process.env,
-): Promise<void> {
+export async function assertNotProduction(query: (sql: string) => Promise<{ value: string }[]>, url: string,
+  env: Env = process.env): Promise<void> {
   if (isHosted(env) && env.VERCEL_ENV === "production") return;
   const rows = await query("select value from gtm.meta where key = 'production'").catch((error: { code?: string }) => {
     if (error?.code === "42P01" || error?.code === "3F000") return []; // gtm.meta or schema gtm not created yet

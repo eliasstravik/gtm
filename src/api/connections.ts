@@ -2,11 +2,10 @@ import { createHmac } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isHosted, safeEqual, value } from "../shared/env.js";
+import { jwtClaims, PROBE_PATH, PROTECTED_STATUSES, requestHost, vercelJwts } from "../shared/request.js";
 
 /** The fixed contents of `public/_gtm/probe.txt`. */
 export const PROBE_TEXT = "gtm-probe-v1";
-const PROBE_PATH = "/_gtm/probe.txt";
-const PROTECTED_STATUSES = [301, 302, 303, 307, 308, 401, 403];
 const API = "https://api.vercel.com";
 const SETTINGS_URL = "https://vercel.com/d?to=%2F%5Bteam%5D%2F%5Bproject%5D%2Fsettings%2Fenvironment-variables&title=Environment+Variables";
 const PRIVATE = "Save needs a browser signed in through Vercel's login on this domain (not a bypass, token or automation call).";
@@ -24,7 +23,6 @@ function insist(ok: unknown, message: string, status = 403): asserts ok {
   if (!ok) throw new Refused(message, status);
 }
 const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: connectionHeaders });
-const host = (req: Request) => (req.headers.get("host") ?? "").toLowerCase();
 const hostOf = (origin: string) => { try { return new URL(origin).host.toLowerCase(); } catch { return ""; } };
 const isJson = (req: Request) => req.headers.get("content-type")?.split(";")[0].trim().toLowerCase() === "application/json";
 
@@ -74,13 +72,10 @@ function writeEnvLocal(name: string, v: string, dir = process.cwd()): void {
 
 /** A Vercel REST call with the project token; failures carry the status and Vercel's error code, never the body. */
 async function vercel<T>(token: string, path: string, body?: unknown): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API}${path}`, {
-      method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : JSON.stringify(body),
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, signal: AbortSignal.timeout(15_000),
-    });
-  } catch { throw new Refused("Could not reach the Vercel API.", 502); }
+  const res = await fetch(`${API}${path}`, {
+    method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : JSON.stringify(body),
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, signal: AbortSignal.timeout(15_000),
+  }).catch(() => { throw new Refused("Could not reach the Vercel API.", 502); });
   const data = (await res.json().catch(() => ({}))) as T & { error?: { code?: string } };
   insist(res.ok, `The Vercel API refused ${path.split("?")[0]} (${res.status}${data.error?.code ? ` ${data.error.code}` : ""}).`, 502);
   return data;
@@ -105,20 +100,16 @@ async function ownerSession(req: Request, origin: string, team: string): Promise
   for (const name of ["authorization", "x-vercel-protection-bypass", "x-vercel-set-bypass-cookie", "x-vercel-trusted-oidc-idp-token"]) {
     insist(!req.headers.has(name) && !keys.includes(name), PRIVATE);
   }
-  const cookies = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim()).filter((c) => c.startsWith("_vercel_jwt="));
-  insist(cookies.length === 1, PRIVATE);
-  const cookie = cookies[0], jwt = cookie.slice("_vercel_jwt=".length);
-  insist(jwt.length < 8192 && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(jwt), PRIVATE);
-  let claims: Record<string, unknown> | null = null;
-  try { claims = JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString()); } catch { /* refused below */ }
-  insist(claims && typeof claims === "object" && !Object.hasOwn(claims, "bypass") && typeof claims.userId === "string" &&
-    claims.userId.length > 0 && claims.ownerId === team && claims.aud === new URL(origin).hostname &&
-    claims.sub === "sso-protection", PRIVATE);
+  const jwts = vercelJwts(req), [jwt] = jwts, cookie = `_vercel_jwt=${jwt}`;
+  insist(jwts.length === 1 && jwt.length < 8192 && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(jwt), PRIVATE);
+  const claims = jwtClaims(jwt);
+  insist(!Object.hasOwn(claims, "bypass") && typeof claims.userId === "string" && claims.userId.length > 0 &&
+    claims.ownerId === team && claims.aud === new URL(origin).hostname && claims.sub === "sso-protection", PRIVATE);
   const probe = (headers?: Record<string, string>) =>
     fetch(`${origin}${PROBE_PATH}`, { redirect: "manual", cache: "no-store", headers, signal: AbortSignal.timeout(10_000) });
-  let anonymous: Response, signedIn: Response;
-  try { [anonymous, signedIn] = await Promise.all([probe(), probe({ cookie })]); }
-  catch { throw new Refused("Could not verify the Vercel login right now; try again.", 503); }
+  const [anonymous, signedIn] = await Promise.all([probe(), probe({ cookie })]).catch(() => {
+    throw new Refused("Could not verify the Vercel login right now; try again.", 503);
+  });
   try {
     insist(PROTECTED_STATUSES.includes(anonymous.status), "Turn on Vercel Authentication → All Deployments to use Save.");
     // trim(): a trailing newline in probe.txt proves the same thing.
@@ -134,7 +125,7 @@ type Session = { origin: string; token: string; projectId: string; team: string;
 async function access(req: Request): Promise<{ save: Save; session?: Session }> {
   if (!isHosted()) return { save: { mode: "local" } };
   const prod = value("VERCEL_PROJECT_PRODUCTION_URL")?.toLowerCase();
-  if (process.env.VERCEL_ENV !== "production" || !prod || host(req) !== prod) {
+  if (process.env.VERCEL_ENV !== "production" || !prod || requestHost(req) !== prod) {
     const where = prod && /^[a-z0-9.-]+(:\d+)?$/.test(prod) ? ` (https://${prod})` : "";
     return { save: { mode: "off", reason: `Save works only on the production domain${where}, where Vercel's login is.` } };
   }
@@ -162,11 +153,6 @@ function tokenWarning(now = Date.now()): string | null {
   return `${days <= 0 ? "The Vercel token Save uses has expired" : `The Vercel token Save uses expires in ${days} day${days === 1 ? "" : "s"}`} (${expires}). ${fix}`;
 }
 
-/** Whether production is pinned by an Instant Rollback: Vercel turns production auto-assign off until it is undone. */
-export function rollbackPinned(project: { autoAssignCustomDomains?: boolean }): boolean {
-  return project.autoAssignCustomDomains === false;
-}
-
 type EnvVar = { key: string; target?: string[] | string; customEnvironmentIds?: string[] };
 type Deployment = { uid: string; url: string; readyState?: string };
 
@@ -182,7 +168,8 @@ async function saveHosted(s: Session, name: string, v: string): Promise<{ ok: tr
   insist(!shared, `${name} is one variable shared by several environments; change it in the Vercel dashboard: ${SETTINGS_URL}`, 409);
   await vercel(s.token, `/v10/projects/${id}/env?upsert=true&${team}`, { key: name, value: v, type: "sensitive", target: ["production"] });
   const project = await vercel<{ name: string; autoAssignCustomDomains?: boolean }>(s.token, `/v9/projects/${id}?${team}`);
-  if (rollbackPinned(project)) {
+  // An Instant Rollback pins production: Vercel turns production auto-assign off until it is undone.
+  if (project.autoAssignCustomDomains === false) {
     return { ok: true, status: "Saved, but production is pinned by a rollback, so nothing was redeployed. Undo the rollback in Vercel to apply it." };
   }
   const { deployments = [] } = await vercel<{ deployments?: Deployment[] }>(s.token, `/v6/deployments?projectId=${id}&target=production&limit=5&${team}`);
@@ -210,7 +197,7 @@ export async function saveConnection(req: Request): Promise<Response> {
     insist(isJson(req), "Send JSON { name, value }.", 415);
     if (!hosted) {
       const origin = req.headers.get("origin"), site = req.headers.get("sec-fetch-site");
-      insist((origin === null || hostOf(origin) === host(req)) && (site === null || site === "same-origin"), "Save accepts same-origin requests only.");
+      insist((origin === null || hostOf(origin) === requestHost(req)) && (site === null || site === "same-origin"), "Save accepts same-origin requests only.");
     }
     const { save, session } = await access(req);
     if (hosted) {

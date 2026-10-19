@@ -106,11 +106,7 @@ function parseContent(content: unknown): unknown {
   if (!Array.isArray(content)) return content;
   const texts = content.filter((c) => c?.type === "text" && typeof c.text === "string").map((c) => c.text as string);
   if (texts.length === 0) return content;
-  try {
-    return JSON.parse(texts.join("\n"));
-  } catch {
-    return texts.join("\n");
-  }
+  try { return JSON.parse(texts.join("\n")); } catch { return texts.join("\n"); }
 }
 
 function bound(v: unknown): unknown {
@@ -153,12 +149,9 @@ export async function fetchPage(url: string): Promise<{ url: string; text: strin
 
 /** Only public http(s) addresses by name: no IP literals, localhost, internal names or credentials in the URL. */
 function publicUrl(input: string): string {
-  let u: URL;
-  try {
-    u = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
-  } catch {
-    throw new Error(`Not a web address: ${input}`);
-  }
+  const full = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+  if (!URL.canParse(full)) throw new Error(`Not a web address: ${input}`);
+  const u = new URL(full);
   const host = u.hostname.toLowerCase();
   if (!/^https?:$/.test(u.protocol) || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.startsWith("[") || host.includes(":") || !host.includes(".") ||
     /\.(local|internal|localhost|home|lan|arpa)$/.test(host) || u.username || u.password) throw new Error(`Not a public web address: ${input}`);

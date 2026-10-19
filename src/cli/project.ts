@@ -11,11 +11,7 @@ export function packageRoot(): string {
 
 /** Parsed JSON file, or undefined when it is missing or unreadable. */
 export function readJson<T = any>(path: string): T | undefined {
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
-  } catch {
-    return undefined;
-  }
+  try { return JSON.parse(readFileSync(path, "utf8")) as T; } catch { return undefined; }
 }
 
 /** True when `dir` holds a gtm project: a package.json that depends on @eliasstravik/gtm. */

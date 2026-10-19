@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, PRODUCTION_DATABASE, value } from "../shared/env.js";
+import { alive, withDatabase } from "./localdb.js";
 import { extractBlock, findProject, loadEnv, managedBlock, packageRoot, readJson, RESTORED, SKILLS_TARGET, skillLinks } from "./project.js";
 
 type Report = { problems: string[]; warnings: string[]; info: string[] };
@@ -49,13 +50,7 @@ function problem(r: Report, what: string, fix: string): void {
   r.problems.push(`${what}\n  Fix: ${fix}.`);
 }
 
-function read(dir: string, file: string): string | undefined {
-  try {
-    return readFileSync(join(dir, file), "utf8");
-  } catch {
-    return undefined;
-  }
-}
+const read = (dir: string, file: string) => { try { return readFileSync(join(dir, file), "utf8"); } catch { return undefined; } };
 
 const matcher = (src: string) => /matcher\s*:\s*(\[[^\]]*\])/.exec(src)?.[1].replace(/\s+/g, "").replace(/'/g, '"');
 
@@ -74,11 +69,10 @@ function layout(dir: string, r: Report): void {
     else if (readlinkSync(path) !== SKILLS_TARGET) problem(r, `${link} does not point at .agents/skills.`, `delete it and ${INIT}`);
   }
   // A Slack project drops .gitkeep (eve loads every entry of agent/skills as a skill), so git keeps no empty folder.
-  if (!existsSync(join(dir, "agent"))) {
-    if (!existsSync(join(dir, ".agents", "skills"))) problem(r, ".agents/skills is missing.", LAYOUT);
-  } else if (existsSync(join(dir, ".agents", "skills", ".gitkeep"))) {
+  const slack = existsSync(join(dir, "agent"));
+  if (!slack && !existsSync(join(dir, ".agents", "skills"))) problem(r, ".agents/skills is missing.", LAYOUT);
+  if (slack && existsSync(join(dir, ".agents", "skills", ".gitkeep")))
     problem(r, ".agents/skills/.gitkeep breaks the Slack agent (eve loads every entry there as a skill).", "delete it");
-  }
   const agents = read(dir, "AGENTS.md");
   const block = agents == null ? undefined : extractBlock(agents);
   if (agents != null && block !== managedBlock())
@@ -112,35 +106,22 @@ function resolves(dir: string, spec: string): boolean {
 async function database(dir: string, r: Report): Promise<void> {
   const local = !value("DATABASE_URL");
   try {
-    const { withDatabase } = await import("./localdb.js");
     const url = await withDatabase(dir, async (url: string) => {
       const client = new pg.Client({ connectionString: url });
       await client.connect();
-      try {
-        await assertNotProduction(async (sql) => (await client.query(sql)).rows, url);
-      } finally {
-        await client.end();
-      }
+      await assertNotProduction(async (sql) => (await client.query(sql)).rows, url).finally(() => client.end());
       return url;
     });
     r.info.push(`Database: ${databaseIdentity(url)}${local ? " (local PGlite in .gtm/)" : ""}`);
     if (!local) return void r.info.push(`DATABASE_URL: ${redact(url)} (from env files)`);
     // The URL is stable only when `gtm dev` serves it; a short-lived server's lock is gone by now.
     const lock = readJson(join(dir, ".gtm", "db.lock"));
-    const live = lock?.dev && lock.port === Number(new URL(url).port) && alive(lock.pid);
+    const live = lock?.dev && lock.port === Number(new URL(url).port) && typeof lock.pid === "number" && alive(lock.pid);
     r.info.push(live ? `DATABASE_URL: ${url} (served by \`gtm dev\` while it runs)` : "DATABASE_URL: the local database has a URL only while `npm run dev` runs; run check again then to print it");
   } catch (error) {
     const message = (error as Error).message ?? String(error);
     if (message.includes(PRODUCTION_DATABASE)) problem(r, "The database is stamped as production's.", "point DATABASE_URL at a dev branch (`npx @eliasstravik/gtm docs data`)");
     else problem(r, `The database is unreachable: ${message}`, local ? "see `npx @eliasstravik/gtm docs local`" : "check DATABASE_URL in your env files");
-  }
-}
-
-function alive(pid: unknown): boolean {
-  try {
-    return typeof pid === "number" && process.kill(pid, 0);
-  } catch {
-    return false;
   }
 }
 
@@ -212,17 +193,12 @@ export function protectionFindings(project: any, aliases: any[]): { problems: [s
 
 /** GET against the Vercel API with VERCEL_TOKEN from the shell, else the logged-in `vercel` CLI's session. */
 function vercelApi(shellToken: string | undefined): ((path: string) => Promise<any>) | undefined {
-  let token = shellToken;
-  let base = "https://api.vercel.com";
-  if (!token) {
-    const home = homedir();
-    const dirs = [process.env.XDG_DATA_HOME && join(process.env.XDG_DATA_HOME, "com.vercel.cli"), join(home, ".local", "share", "com.vercel.cli"),
-      join(home, "Library", "Application Support", "com.vercel.cli"), process.env.APPDATA && join(process.env.APPDATA, "com.vercel.cli", "Data")];
-    const found = dirs.find((d): d is string => Boolean(d) && existsSync(join(d as string, "auth.json")));
-    if (!found) return undefined;
-    token = readJson(join(found, "auth.json"))?.token;
-    base = readJson(join(found, "config.json"))?.api ?? base; // the CLI's own API base, when configured
-  }
+  const home = homedir(), { XDG_DATA_HOME: xdg, APPDATA: appData } = process.env;
+  const dirs = [xdg && join(xdg, "com.vercel.cli"), join(home, ".local", "share", "com.vercel.cli"),
+    join(home, "Library", "Application Support", "com.vercel.cli"), appData && join(appData, "com.vercel.cli", "Data")];
+  const found = shellToken ? undefined : dirs.find((d): d is string => Boolean(d) && existsSync(join(d as string, "auth.json")));
+  const token = shellToken || (found && readJson(join(found, "auth.json"))?.token);
+  const base: string = (found && readJson(join(found, "config.json"))?.api) ?? "https://api.vercel.com"; // the CLI's, if set
   if (!token) return undefined;
   return async (path) => {
     const res = await fetch(`${base.replace(/\/$/, "")}${path}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });

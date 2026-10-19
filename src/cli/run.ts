@@ -12,21 +12,13 @@ const TERMINAL = new Set(["completed", "failed", "cancelled"]);
  * and error as JSON. Exits non-zero unless the run completed.
  */
 export async function run(args: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    options: { input: { type: "string" }, prod: { type: "boolean" }, "no-wait": { type: "boolean" } },
-  });
+  const options = { input: { type: "string" }, prod: { type: "boolean" }, "no-wait": { type: "boolean" } } as const;
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options });
   if (positionals.length !== 1) throw new Error(USAGE);
   loadEnv(findProject(), true);
   let body: string | undefined;
-  if (values.input !== undefined) {
-    try {
-      body = JSON.stringify(JSON.parse(values.input));
-    } catch {
-      throw new Error(`--input must be JSON, e.g. --input '{"limit":5}'`);
-    }
-  }
+  try { body = values.input === undefined ? undefined : JSON.stringify(JSON.parse(values.input)); }
+  catch { throw new Error(`--input must be JSON, e.g. --input '{"limit":5}'`); }
   const headers: Record<string, string> = { "content-type": "application/json" };
   let base = `http://127.0.0.1:${appPort()}`;
   if (values.prod) {
@@ -51,15 +43,11 @@ export async function run(args: string[]): Promise<void> {
   console.error(`Started run ${runId}; waiting for it to finish (Ctrl-C stops waiting, not the run).`);
   for (let misses = 0; ; ) {
     await sleep(1000);
-    let state;
-    try {
-      state = await call(`/runs/${encodeURIComponent(runId)}`);
-      misses = 0;
-    } catch (error) {
-      if ((misses += 1) >= 10) throw error;
-      continue;
-    }
-    if (!TERMINAL.has(state.status)) continue;
+    const state = await call(`/runs/${encodeURIComponent(runId)}`).catch((error) => {
+      if ((misses += 1) >= 10) throw error; // ten failed polls in a row
+    });
+    if (state) misses = 0;
+    if (!state || !TERMINAL.has(state.status)) continue;
     console.log(JSON.stringify({ runId, status: state.status, returnValue: state.returnValue ?? null, error: state.error ?? null }, null, 2));
     if (state.status !== "completed") process.exitCode = 1;
     return;

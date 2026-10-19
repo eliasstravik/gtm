@@ -1,39 +1,19 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 import { allowedHosts } from "../shared/env.js";
+import { cronSchedules, pageSlugs } from "../shared/scan.js";
+
+export { cronSchedules, pageSlugs, RESERVED_PAGES } from "../shared/scan.js";
 
 type Phase = string;
 type Context = { defaultConfig: NextConfig };
 type ConfigInput = NextConfig | ((phase: Phase, ctx: Context) => NextConfig | Promise<NextConfig>);
 
-/** `app/` folders that are cockpit routes, never listed as agent-made pages. */
-export const RESERVED_PAGES = ["context", "workflows", "data", "connections", "api", "eve", "_gtm"];
 const TRACED = ["./context/**", "./.agents/skills/**", "./AGENTS.md", "./.env.example", "./vercel.json"];
-
-/**
- * Agent-made page slugs: every `app/<slug>/page.tsx` minus RESERVED_PAGES, sorted. Route groups, dynamic segments,
- * private and parallel folders ((x), [x], _x, @x) are not pages. Same rule as the API's dev rescan.
- */
-export function pageSlugs(dir = process.cwd()): string[] {
-  const app = join(dir, "app");
-  if (!existsSync(app)) return [];
-  return readdirSync(app).filter((n) => /^[a-z0-9]/i.test(n) && !RESERVED_PAGES.includes(n) && existsSync(join(app, n, "page.tsx")))
-    .sort();
-}
-
-/** Workflow schedules from `vercel.json` crons whose path is `/api/gtm/cron/<name>` (none if it is unreadable). */
-export function cronSchedules(dir = process.cwd()): { workflow: string; schedule: string }[] {
-  let crons: unknown;
-  try { crons = JSON.parse(readFileSync(join(dir, "vercel.json"), "utf8")).crons; } catch { return []; }
-  return (Array.isArray(crons) ? crons : []).flatMap((c: { path?: unknown; schedule?: unknown }) => {
-    const m = /^\/api\/gtm\/cron\/([^/?#]+)(?:[?#].*)?$/.exec(String(c?.path));
-    return m && typeof c.schedule === "string" ? [{ workflow: m[1], schedule: c.schedule }] : [];
-  });
-}
 
 function gtmConfig(user: NextConfig, dir: string): NextConfig {
   const includes = { ...user.outputFileTracingIncludes };

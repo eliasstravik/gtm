@@ -83,9 +83,9 @@ export async function runAgentCli(o: CliAgentOptions): Promise<CliAgentResult> {
       args.push("-c", `mcp_servers.${n}.url=${JSON.stringify(s.url)}`, "-c", `mcp_servers.${n}.default_tools_approval_mode="approve"`);
       if (s.allow) args.push("-c", `mcp_servers.${n}.enabled_tools=${JSON.stringify(s.allow)}`);
       for (const [header, v] of Object.entries(mcpAuth(s))) {
-        env[`GTM_MCP_KEY_${i}`] = header.toLowerCase() === "authorization" && v.startsWith("Bearer ") ? v.slice(7) : v;
-        args.push("-c", header.toLowerCase() === "authorization" && v.startsWith("Bearer ")
-          ? `mcp_servers.${n}.bearer_token_env_var="GTM_MCP_KEY_${i}"`
+        const bearer = header.toLowerCase() === "authorization" && v.startsWith("Bearer ");
+        env[`GTM_MCP_KEY_${i}`] = bearer ? v.slice(7) : v;
+        args.push("-c", bearer ? `mcp_servers.${n}.bearer_token_env_var="GTM_MCP_KEY_${i}"`
           : `mcp_servers.${n}.env_http_headers={ ${JSON.stringify(header)} = "GTM_MCP_KEY_${i}" }`);
       }
     });

@@ -1,21 +1,18 @@
 /** Workflows view, start, runs and cron (plan §3, §4), all through the Workflow SDK; never the database. */
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { getRun, start } from "workflow/api";
 import { WorkflowRunNotFoundError } from "workflow/errors";
 import { parseWorkflowName } from "workflow/observability";
 import { getWorld } from "workflow/runtime";
 import { environment, isHosted, safeEqual, value } from "../shared/env.js";
+import { cronSchedules } from "../shared/scan.js";
 import { HttpError, json } from "./http.js";
 
 /** The registry `workflows/index.ts` exports: name → workflow function. */
 export type Registry = Record<string, (...args: any[]) => Promise<unknown>>;
 
 type World = Awaited<ReturnType<typeof getWorld>>;
-type RunRow = { runId: string; status: string; workflowName: string; errorCode?: string | null; createdAt: Date } & {
-  startedAt?: Date | null;
-  completedAt?: Date | null;
-};
+type RunRow = { runId: string; status: string; workflowName: string; errorCode?: string | null; createdAt: Date;
+  startedAt?: Date | null; completedAt?: Date | null };
 
 function workflow(workflows: Registry, name: string) {
   const fn = Object.hasOwn(workflows, name) ? workflows[name] : undefined;
@@ -24,18 +21,11 @@ function workflow(workflows: Registry, name: string) {
 }
 
 /** Workflow name → schedule: vercel.json crons on /api/gtm/cron/<name> unless hosted, then GTM_CRONS from withGtm. */
-async function schedules(): Promise<Map<string, string>> {
+function schedules(): Map<string, string> {
+  // process.env.GTM_CRONS literally, so the value withGtm inlines at build time is the one read.
+  const crons: ReturnType<typeof cronSchedules> = isHosted() ? JSON.parse(process.env.GTM_CRONS ?? "[]") : cronSchedules();
   const map = new Map<string, string>();
-  try {
-    // process.env.GTM_CRONS literally, so the value withGtm inlines at build time is the one read.
-    const crons: { workflow?: unknown; schedule?: unknown; path?: unknown }[] = isHosted()
-      ? JSON.parse(process.env.GTM_CRONS ?? "[]")
-      : (JSON.parse((await readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), "vercel.json"), "utf8").catch(() => "")) || "{}").crons ?? []);
-    for (const c of crons) {
-      const name = c.workflow ?? /^\/api\/gtm\/cron\/([^/?#]+)(?:[?#].*)?$/.exec(String(c.path))?.[1];
-      if (typeof name === "string" && typeof c.schedule === "string") map.set(name, map.has(name) ? `${map.get(name)}; ${c.schedule}` : c.schedule);
-    }
-  } catch {} // an unreadable vercel.json shows no schedules; `gtm check` reports it
+  for (const { workflow: w, schedule } of crons) map.set(w, map.has(w) ? `${map.get(w)}; ${schedule}` : schedule);
   return map;
 }
 
@@ -60,7 +50,7 @@ const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : nul
 
 /** GET /workflows → { workflows: [{ name, schedule }], runs: [...], runsUrl }. */
 export async function workflowsList(workflows: Registry): Promise<Response> {
-  const crons = await schedules();
+  const crons = schedules();
   // The SWC transform gives each workflow function the `workflowId` that runs record as workflowName.
   const names = new Map(Object.entries(workflows).map(([name, fn]) => [(fn as { workflowId?: string }).workflowId, name]));
   const rows = await getWorld().then(recentRuns).catch((error) => {
@@ -91,12 +81,9 @@ export async function workflowsList(workflows: Registry): Promise<Response> {
 export async function startRun(req: Request, workflows: Registry, name: string): Promise<Response> {
   const fn = workflow(workflows, name);
   const body = (await req.text()).trim();
-  let args: unknown[] = [];
-  try {
-    if (body) args = [JSON.parse(body)];
-  } catch {
-    throw new HttpError(400, "The body must be JSON: the workflow's input");
-  }
+  let args: unknown[];
+  try { args = body ? [JSON.parse(body)] : []; }
+  catch { throw new HttpError(400, "The body must be JSON: the workflow's input"); }
   return json({ runId: (await start(fn, args)).runId });
 }
 
@@ -109,10 +96,8 @@ export async function runStatus(id: string): Promise<Response> {
   });
   let error: string | null = null;
   // Terminal, so returnValue settles on its first read; it also revives (and decrypts) the stored payload.
-  const returnValue =
-    status === "completed" || status === "failed"
-      ? await run.returnValue.catch((e) => ((error = failure(e)), null))
-      : null;
+  const terminal = status === "completed" || status === "failed";
+  const returnValue = terminal ? await run.returnValue.catch((e) => ((error = failure(e)), null)) : null;
   return json({ runId: id, status, returnValue: returnValue ?? null, error });
 }
 

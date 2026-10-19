@@ -5,6 +5,7 @@ import { gateway, jsonSchema, Output, stepCountIs, tool, type LanguageModel, typ
 import { sleep } from "workflow";
 import { z } from "zod";
 import { isHosted, value } from "../shared/env.js";
+import { jwtClaims } from "../shared/request.js";
 import { runAgentCli, type CliBackend, type Reasoning, type Usage } from "./cli.js";
 import { gatewayModel, MODELS, preferred, providerModel, type Family } from "./models.js";
 import { callMcpTool, fetchPage, listMcpTools, type McpServer } from "./tools.js";
@@ -111,13 +112,10 @@ export async function agent<T = string>(o: AgentOptions<T>): Promise<AgentResult
   const toolCalls = traceToolCalls(steps);
   return {
     value: (o.schema ? o.schema.parse(result) : result) as T,
-    costUsd: round(gatewayUsd(steps) + toolCalls.reduce((n, c) => n + c.costUsd, 0)),
+    costUsd: round(gatewayUsd(steps) + sum(toolCalls, (c) => c.costUsd)),
     modelCalls: steps.length,
     toolCalls,
-    usage: {
-      inputTokens: steps.reduce((n, s) => n + (s.usage?.inputTokens ?? 0), 0),
-      outputTokens: steps.reduce((n, s) => n + (s.usage?.outputTokens ?? 0), 0),
-    },
+    usage: { inputTokens: sum(steps, (s) => s.usage?.inputTokens ?? 0), outputTokens: sum(steps, (s) => s.usage?.outputTokens ?? 0) },
   };
 }
 
@@ -126,9 +124,7 @@ function chooseBackend(o: AgentOptions<unknown>): Route {
   if (isHosted() || value("AI_GATEWAY_API_KEY")) return { kind: "gateway", model: gatewayModel(o.model) };
   const oidc = value("VERCEL_OIDC_TOKEN");
   if (oidc) {
-    const exp = (() => {
-      try { return JSON.parse(atob(oidc.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).exp; } catch { return undefined; }
-    })();
+    const { exp } = jwtClaims(oidc);
     if (typeof exp === "number" && exp * 1000 <= Date.now()) throw new Error("VERCEL_OIDC_TOKEN has expired; run `vercel env pull` again");
     return { kind: "gateway", model: gatewayModel(o.model) };
   }
@@ -158,15 +154,9 @@ type V4 = Extract<LanguageModel, { specificationVersion: "v4" }>;
 class KeyModel {
   readonly specificationVersion = "v4";
   constructor(readonly family: Family, readonly modelId: string) {}
-  static [Symbol.for("workflow-serialize")](m: KeyModel) {
-    return { family: m.family, modelId: m.modelId };
-  }
-  static [Symbol.for("workflow-deserialize")](d: { family: Family; modelId: string }) {
-    return new KeyModel(d.family, d.modelId);
-  }
-  private real(): V4 {
-    return (this.family === "anthropic" ? anthropic(this.modelId) : openai(this.modelId)) as V4;
-  }
+  static [Symbol.for("workflow-serialize")](m: KeyModel) { return { family: m.family, modelId: m.modelId }; }
+  static [Symbol.for("workflow-deserialize")](d: { family: Family; modelId: string }) { return new KeyModel(d.family, d.modelId); }
+  private real() { return (this.family === "anthropic" ? anthropic(this.modelId) : openai(this.modelId)) as V4; }
   get provider() { return this.real().provider; }
   get supportedUrls() { return this.real().supportedUrls; }
   doGenerate(options: Parameters<V4["doGenerate"]>[0]) { return this.real().doGenerate(options); }
@@ -223,10 +213,10 @@ function sanitizeSchema(schema: unknown): unknown {
 
 /** The Gateway reports each call's cost in its provider metadata. */
 function gatewayUsd(steps: StepResult<ToolSet>[]): number {
-  return steps.reduce((sum, s) => {
+  return sum(steps, (s) => {
     const cost = (s.providerMetadata?.gateway as { cost?: unknown } | undefined)?.cost;
-    return sum + (typeof cost === "string" || typeof cost === "number" ? Number(cost) || 0 : 0);
-  }, 0);
+    return typeof cost === "string" || typeof cost === "number" ? Number(cost) || 0 : 0;
+  });
 }
 
 /** Tool results may report their cost: `{ costUsd }` from our steps, `{ cost: { value, currency: "USD" } }` from a provider. */
@@ -248,3 +238,4 @@ function traceToolCalls(steps: StepResult<ToolSet>[]): AgentToolCall[] {
 }
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
+const sum = <T>(items: T[], f: (item: T) => number) => items.reduce((n, item) => n + f(item), 0);

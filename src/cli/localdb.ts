@@ -22,13 +22,10 @@ function paths(dir: string) {
   return { gtm, lock: join(gtm, "db.lock"), id: join(gtm, "db.id"), data: join(gtm, "pglite"), version: join(gtm, "pglite-version") };
 }
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
-const read = (file: string) => {
-  try { return readFileSync(file, "utf8").trim(); } catch { return undefined; }
-};
-const parse = (text: string | undefined): Lock | undefined => {
-  try { return JSON.parse(text ?? ""); } catch { return undefined; }
-};
-const alive = (pid: number) => {
+const read = (file: string) => { try { return readFileSync(file, "utf8").trim(); } catch { return undefined; } };
+const parse = (text: string | undefined): Lock | undefined => { try { return JSON.parse(text ?? ""); } catch { return undefined; } };
+/** True while process `pid` exists (EPERM: it does, under another user). */
+export const alive = (pid: number) => {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 };
 const release = (file: string) => { if (parse(read(file))?.pid === process.pid) unlinkSync(file); };
@@ -210,10 +207,8 @@ function refuseOtherMajor(found: string, written: string | undefined): never {
 async function checkId(dir: string, port: number): Promise<void> {
   const client = new pg.Client({ connectionString: localUrl(port) });
   await client.connect();
-  const rows = await client
-    .query("select value from gtm.meta where key = 'local_id'")
-    .then((r) => r.rows, () => [])
-    .finally(() => client.end());
+  const rows = await client.query("select value from gtm.meta where key = 'local_id'")
+    .then((r) => r.rows, () => []).finally(() => client.end());
   if (!rows[0] || rows[0].value !== read(paths(dir).id)) {
     throw new Error(`The database on 127.0.0.1:${port} named in .gtm/db.lock is not this project's (.gtm/db.id differs). Stop the gtm dev serving it; delete .gtm/db.lock only if no gtm process is running.`);
   }

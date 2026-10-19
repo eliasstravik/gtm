@@ -98,11 +98,8 @@ function refuseDestructive(folder: string, tags: string[]): void {
     const sql = readFileSync(join(folder, `${tag}.sql`), "utf8");
     return !MARKER.test(sql) && DESTRUCTIVE.test(sql.replace(/--.*$/gm, "").replace(/\bON\s+DELETE\b/gi, ""));
   });
-  if (risky.length) {
-    throw new Error(
-      `gtm migrate refused on production: ${risky.map((t) => `db/migrations/${t}.sql`).join(", ")} may lose data ` +
-        "(DROP, RENAME, TRUNCATE, ALTER … TYPE or DELETE). After a yes in chat and a Neon backup branch, add the line " +
-        "`-- gtm: destructive` to the file (see `npx @eliasstravik/gtm docs data`).",
-    );
-  }
+  if (!risky.length) return;
+  throw new Error(`gtm migrate refused on production: ${risky.map((t) => `db/migrations/${t}.sql`).join(", ")} may lose data ` +
+    "(DROP, RENAME, TRUNCATE, ALTER … TYPE or DELETE). After a yes in chat and a Neon backup branch, add the line " +
+    "`-- gtm: destructive` to the file (see `npx @eliasstravik/gtm docs data`).");
 }

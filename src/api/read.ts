@@ -1,17 +1,16 @@
 /** Read-only cockpit endpoints: Shell, Context and Data (plan §4). The project root is process.cwd(). */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
+import { pageSlugs } from "../shared/scan.js";
 import { HttpError, json, toJson } from "./http.js";
 
-const RESERVED = new Set(["context", "workflows", "data", "connections", "api", "eve", "_gtm"]);
 const PAGE_SIZE = 100;
 const CSV_ROWS = 10_000;
 const CSV_BYTES = 5 * 1024 * 1024;
 
 const read = (file: string) => readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), file), "utf8").catch(() => null);
-const exists = (file: string) => stat(path.join(/*turbopackIgnore: true*/ process.cwd(), file)).then((s) => s.isFile(), () => false);
 
 /** The first heading (only `# ` when h1), ignoring front matter and a closing `#` sequence. */
 function heading(markdown: string, h1 = false): string | undefined {
@@ -23,22 +22,11 @@ function heading(markdown: string, h1 = false): string | undefined {
 export async function shell(): Promise<Response> {
   const company = heading((await read("context/company.md")) ?? "", true) ?? "GTM";
   const url = value("DATABASE_URL");
-  let database: string | null = null;
-  try {
-    database = url ? databaseIdentity(url) : null;
-  } catch {} // an unparseable URL shows as no database; Data reports the real error
+  // An unparseable URL shows as no database; Data reports the real error.
+  const database = url && URL.canParse(url) ? databaseIdentity(url) : null;
   // process.env.GTM_PAGES literally, so the value withGtm inlines at build time is the one read.
-  const pages: string[] = isHosted() ? JSON.parse(process.env.GTM_PAGES ?? "[]") : await scanPages();
+  const pages: string[] = isHosted() ? JSON.parse(process.env.GTM_PAGES ?? "[]") : pageSlugs();
   return json({ company, environment: environment(), database, pages });
-}
-
-async function scanPages(): Promise<string[]> {
-  const names = await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), "app")).catch(() => [] as string[]);
-  const pages = await Promise.all(
-    // Route groups, dynamic segments, private and parallel folders ((x), [x], _x, @x) are not pages.
-    names.map(async (n) => (/^[a-z0-9]/i.test(n) && !RESERVED.has(n) && (await exists(`app/${n}/page.tsx`)) ? n : null)),
-  );
-  return pages.filter((n): n is string => n != null).sort();
 }
 
 /** Repo-relative paths the Context view may show: AGENTS.md, context/**\/*.md, .agents/skills/*\/SKILL.md. */
@@ -111,8 +99,7 @@ const PUBLIC_TABLES = "information_schema.tables t where t.table_schema = 'publi
 export async function dataTables(): Promise<Response> {
   const { rows } = await readOnly((q) =>
     q(`select t.table_name, (select c.reltuples::float8 from pg_class c
-         where c.relname = t.table_name and c.relnamespace = 'public'::regnamespace) from ${PUBLIC_TABLES} order by 1`),
-  );
+         where c.relname = t.table_name and c.relnamespace = 'public'::regnamespace) from ${PUBLIC_TABLES} order by 1`));
   return json({ tables: rows.map(([name, n]) => ({ name, estimatedRows: n == null || n < 0 ? null : Math.round(n) })) });
 }
 
@@ -127,13 +114,11 @@ async function table(q: Query, name: string): Promise<string> {
 export async function dataPage(name: string, pageParam: string | null): Promise<Response> {
   const page = pageParam ? Number(pageParam) : 1;
   if (!Number.isSafeInteger(page) || page < 1) throw new HttpError(400, "page must be a whole number from 1");
-  return json(
-    await readOnly(async (q) => {
-      const r = await q(`select * from ${await table(q, name)} order by ctid limit ${PAGE_SIZE + 1} offset ${(page - 1) * PAGE_SIZE}`);
-      const columns = r.fields.map((f) => f.name);
-      return { table: name, columns, rows: r.rows.slice(0, PAGE_SIZE), page, pageSize: PAGE_SIZE, hasMore: r.rows.length > PAGE_SIZE };
-    }),
-  );
+  return json(await readOnly(async (q) => {
+    const r = await q(`select * from ${await table(q, name)} order by ctid limit ${PAGE_SIZE + 1} offset ${(page - 1) * PAGE_SIZE}`);
+    const columns = r.fields.map((f) => f.name);
+    return { table: name, columns, rows: r.rows.slice(0, PAGE_SIZE), page, pageSize: PAGE_SIZE, hasMore: r.rows.length > PAGE_SIZE };
+  }));
 }
 
 function csvCell(v: unknown): string {
@@ -164,11 +149,7 @@ export async function dataCsv(name: string): Promise<Response> {
       if (r.rows.length < 1000) return { body: `${lines.join("\n")}\n`, truncated: false };
     }
   });
-  const headers: Record<string, string> = {
-    "content-type": "text/csv; charset=utf-8",
-    "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}.csv"`,
-    "cache-control": "no-store",
-  };
-  if (truncated) headers["x-gtm-truncated"] = "1";
+  const headers = { "content-type": "text/csv; charset=utf-8", "cache-control": "no-store",
+    "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}.csv"`, ...(truncated && { "x-gtm-truncated": "1" }) };
   return new Response(body, { headers });
 }

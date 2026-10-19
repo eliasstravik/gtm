@@ -1,16 +1,13 @@
 import { allowedHosts, isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
+import { type Bypass, carriesBypass, PROBE_PATH, PROTECTED_STATUSES, requestHost } from "../shared/request.js";
+
+export { type Bypass, carriesBypass, PROBE_PATH, PROTECTED_STATUSES, requestHost } from "../shared/request.js";
 
 /**
  * Whether `/.well-known/workflow/*` skips the hosted fail-closed check. False (they are checked like every page)
  * until spike 1b shows those routes refuse outside callers on an unprotected deployment.
  */
 export const WORKFLOW_ROUTES_SELF_PROTECTED = false;
-/** Served from `public/`, outside the proxy's matcher; requested by the fail-closed and Save probes. */
-export const PROBE_PATH = "/_gtm/probe.txt";
-/** Statuses that show Vercel's login stands in front of an anonymous request. */
-export const PROTECTED_STATUSES = [301, 302, 303, 307, 308, 401, 403];
-const BYPASS = "x-vercel-protection-bypass";
-const SET_BYPASS_COOKIE = "x-vercel-set-bypass-cookie";
 const PROBE_TTL_MS = 5 * 60_000;
 const PROBE_HOSTS = 32;
 
@@ -23,36 +20,6 @@ within 5 minutes.</p></body>`;
 
 const refuse = (error: string, status = 403) =>
   Response.json({ error }, { status, headers: { "cache-control": "private, no-store" } });
-
-/** The request's Host header, lower-cased, port included. */
-export function requestHost(req: Request): string {
-  return (req.headers.get("host") ?? "").toLowerCase();
-}
-
-/** Decoded claims of every `_vercel_jwt` cookie on the request ({} for one that does not decode). */
-export function vercelJwtClaims(req: Request): Record<string, unknown>[] {
-  return (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim()).filter((c) => c.startsWith("_vercel_jwt="))
-    .map((c) => {
-      try { return JSON.parse(Buffer.from(c.split(".")[1] ?? "", "base64url").toString()) ?? {}; } catch { return {}; }
-    });
-}
-
-export type Bypass = { header?: string; query: string[]; cookie: boolean };
-
-/**
- * The Protection Bypass a request carries, if any: the `x-vercel-protection-bypass` header or query parameter (any
- * case), or a bypass cookie. Per spike 1d that is a `_vercel_jwt` (the login session's name; its sub is "sso-protection")
- * with a `bypass` claim and sub "protection-bypass-automation" or, for Shareable Links, "protection-bypass-url".
- * A request asking for the cookie (`x-vercel-set-bypass-cookie`) counts as one too.
- */
-export function carriesBypass(req: Request): Bypass | undefined {
-  const params = [...new URL(req.url).searchParams].map(([k, v]) => [k.toLowerCase(), v]);
-  const query = params.filter(([k]) => k === BYPASS).map(([, v]) => v);
-  const cookie = req.headers.has(SET_BYPASS_COOKIE) || params.some(([k]) => k === SET_BYPASS_COOKIE) ||
-    vercelJwtClaims(req).some((c) => Object.hasOwn(c, "bypass") || String(c.sub).startsWith("protection-bypass"));
-  if (!req.headers.has(BYPASS) && !query.length && !cookie) return undefined;
-  return { header: req.headers.get(BYPASS) ?? undefined, query, cookie };
-}
 
 /**
  * Where a bypass may go (plan §3): webhooks and Slack with their own labeled secret, never the automation one;
@@ -100,8 +67,7 @@ function local(req: Request): Response | undefined {
   }
   if (req.method === "GET" || req.method === "HEAD") return undefined;
   const site = req.headers.get("sec-fetch-site"), origin = req.headers.get("origin");
-  let originHost = "";
-  try { originHost = origin === null ? host : new URL(origin).host.toLowerCase(); } catch { /* "null" or junk */ }
+  const originHost = origin === null ? host : URL.canParse(origin) ? new URL(origin).host.toLowerCase() : ""; // "null" or junk
   if (site === "cross-site" || site === "same-site" || originHost !== host) return refuse("Cross-site requests are refused.");
   return undefined;
 }

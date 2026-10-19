@@ -3,6 +3,7 @@
  * Connections (plan §3, §4). Every response is `cache-control: no-store`; errors are `{ error }`.
  */
 import { isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
+import { BYPASS, carriesBypass } from "../shared/request.js";
 import { listConnections, saveConnection } from "./connections.js";
 import { HttpError, json } from "./http.js";
 import { contextFile, contextList, dataCsv, dataPage, dataTables, shell } from "./read.js";
@@ -12,23 +13,6 @@ export type { Registry } from "./runs.js";
 
 type Handler = (req: Request, ctx: { params: Promise<{ path?: string[] }> }) => Promise<Response>;
 
-const BYPASS = "x-vercel-protection-bypass";
-
-/** A protection bypass in any form Vercel accepts: header, query key, or a `_vercel_jwt` cookie with a bypass claim. */
-function carriesBypass(req: Request): boolean {
-  if (req.headers.has(BYPASS) || new URL(req.url).searchParams.has(BYPASS)) return true;
-  return (req.headers.get("cookie") ?? "").split(";").some((c) => {
-    const [name, jwt = ""] = c.trim().split("=", 2);
-    if (name !== "_vercel_jwt") return false;
-    try {
-      const claims = JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8"));
-      return claims.bypass != null || claims.sub === "protection-bypass-automation";
-    } catch {
-      return false;
-    }
-  });
-}
-
 const hostOf = (h: string) => h.split(",")[0].trim().replace(/:\d+$/, "").toLowerCase();
 
 /**
@@ -36,20 +20,15 @@ const hostOf = (h: string) => h.split(",")[0].trim().replace(/:\d+$/, "").toLowe
  * not run stages on the owner's subscription), and never for a cross-site browser request.
  */
 function localCaller(req: Request): boolean {
-  const host = req.headers.get("host");
-  const forwarded = req.headers.get("x-forwarded-host");
-  const origin = req.headers.get("origin");
-  const site = req.headers.get("sec-fetch-site");
-  if (!host || !LOOPBACK_HOSTS.includes(hostOf(host))) return false;
-  if (forwarded && !LOOPBACK_HOSTS.includes(hostOf(forwarded))) return false;
-  if (origin && !URL.canParse(origin)) return false;
-  if (origin && !LOOPBACK_HOSTS.includes(new URL(origin).hostname)) return false;
+  const [host, forwarded, origin, site] = ["host", "x-forwarded-host", "origin", "sec-fetch-site"].map((h) => req.headers.get(h));
+  const loopback = (h: string | null) => !h || LOOPBACK_HOSTS.includes(hostOf(h));
+  if (!host || !loopback(host) || !loopback(forwarded)) return false;
+  if (origin && !(URL.canParse(origin) && LOOPBACK_HOSTS.includes(new URL(origin).hostname))) return false;
   return !site || site === "same-origin" || site === "none";
 }
 
 /** Route handlers for every /api/gtm/* path. */
-export function gtm(options: { workflows: Registry }): { GET: Handler; POST: Handler } {
-  const { workflows } = options;
+export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POST: Handler } {
   const handle: Handler = async (req, ctx) => {
     try {
       const [head, ...rest] = (await ctx.params).path ?? [];

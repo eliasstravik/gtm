@@ -17,11 +17,8 @@ const EVE = "0.80.1";
  * `--package` (or GTM_PACKAGE_SPEC) replaces the @eliasstravik/gtm dependency spec; it and `--no-install` are for tests.
  */
 export async function init(args: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    options: { slack: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } },
-  });
+  const options = { slack: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } } as const;
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options });
   if (positionals.length > 1) throw new Error("Usage: gtm init [dir] [--slack]");
   const dir = resolve(positionals[0] ?? ".");
   const starter = join(packageRoot(), "starter");
@@ -34,11 +31,8 @@ export async function init(args: string[]): Promise<void> {
     else install(dir);
   }
   const rel = relative(process.cwd(), dir) || ".";
-  console.log(
-    fresh
-      ? `\nCreated a gtm project in ${rel}.`
-      : `\n${rel} is already a gtm project: ${repaired.join("; ") || "nothing to restore, AGENTS.md block current"}.`,
-  );
+  console.log(fresh ? `\nCreated a gtm project in ${rel}.`
+    : `\n${rel} is already a gtm project: ${repaired.join("; ") || "nothing to restore, AGENTS.md block current"}.`);
   if (values.slack) console.log("agent/ holds the Slack agent template (existing files kept); see `npx @eliasstravik/gtm docs slack`.");
   console.log(`Next:${rel === "." ? "" : `\n  cd ${rel}`}
   npm run dev                    cockpit on http://127.0.0.1:3000

@@ -49,11 +49,9 @@ export function db(): NodePgDatabase {
   if (store[KEY]) return store[KEY];
   const url = value("DATABASE_URL");
   if (!url) {
-    throw new Error(
-      isHosted()
-        ? "DATABASE_URL is not set in this deployment: connect Neon via the Vercel Marketplace; see `npx @eliasstravik/gtm docs deploy`."
-        : "DATABASE_URL is not set: run the app with `gtm dev` (npm run dev), which serves the local database.",
-    );
+    throw new Error(isHosted()
+      ? "DATABASE_URL is not set in this deployment: connect Neon via the Vercel Marketplace; see `npx @eliasstravik/gtm docs deploy`."
+      : "DATABASE_URL is not set: run the app with `gtm dev` (npm run dev), which serves the local database.");
   }
   return (store[KEY] = drizzle({ client: new GtmPool(url) }));
 }
