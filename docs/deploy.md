@@ -39,8 +39,11 @@ account step with the vendors' own CLIs and dashboards. Our conventions:
 
 ## Notes
 
-- A `vercel deploy` from a laptop uploads what `.vercelignore` does not exclude; the starter's excludes
-  `.env*.local`, `.gtm/` (local data) and the build caches. Git deploys follow `.gitignore`.
+- A `vercel deploy` from a laptop uploads what `.vercelignore` does not exclude (it replaces `.gitignore` there);
+  the starter's repeats `.gitignore` and adds the generated `app/.well-known/workflow/`. Git deploys follow
+  `.gitignore`.
+- `vercel link` appends `.env*` to `.gitignore`, which would also hide `.env.example`; put it back to
+  `.env*.local`.
 - `npm run build` is `gtm migrate && next build`, so every production deploy applies pending migrations first
   (data.md).
 - Teammates add keys on the production domain (`VERCEL_PROJECT_PRODUCTION_URL`), the only place Save works.

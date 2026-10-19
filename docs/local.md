@@ -48,6 +48,7 @@ Vercel's placeholder, which gtm treats as missing (add it again in Connections).
 
 - Connect only a Neon dev branch to Development; a pulled `DATABASE_URL` replaces the local database.
 - A pulled `VERCEL_OIDC_TOKEN` switches laptop `agent()` calls to AI Gateway (path 1), which bills the team.
+  `vercel link` alone already writes one into `.env.local`; delete that line to stay on `claude`/`codex`.
 - Never pull production's env to a laptop (`--environment=production`); production's stamped database is
   refused anyway (data.md). Remove `DATABASE_URL` from `.env.local` to go back to the local database.
 
