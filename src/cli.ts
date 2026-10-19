@@ -7,7 +7,7 @@ type Command = (args: string[]) => Promise<void>;
 const USAGE = `gtm: a company's go-to-market work as an ordinary Next.js project (npx @eliasstravik/gtm <command>)
 
   init [dir] [--slack]      create a project in an empty folder, or repair one (missing wiring, AGENTS.md block)
-  dev                       run the cockpit and workflows on 127.0.0.1:$GTM_PORT (default 3000)
+  dev                       run the Console and workflows on 127.0.0.1:$GTM_PORT (default 3000)
   migrate                   apply database migrations (the package's, then db/migrations)
   check [--prod]            report problems with their fixes; print the local DATABASE_URL
   run <workflow> [--input <json>] [--prod] [--no-wait]

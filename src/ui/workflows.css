@@ -1,16 +1,17 @@
 /* Workflows: one line each, a dot for the last run and the name; colour only for what needs a look. */
+.wf-title { max-width: 1148px; }
 .wf-controls { display: flex; align-items: center; gap: 8px; }
 .wf-controls input[type="search"] { width: 260px; }
 .wf-failing { display: inline-flex; align-items: center; gap: 8px; border-radius: 9999px; padding-inline: 12px; }
 .wf-failing[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
 .wf-failing-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 .wf-failing[aria-pressed="true"] .wf-failing-count { color: inherit; opacity: 0.7; }
-.wf-rows { list-style: none; margin: 4px 0 0; padding: 0; border-top: 1px solid var(--border); }
+.wf-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
 .wf-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--border); }
 .wf-row:hover { background: var(--surface); }
 .wf-dot { position: relative; z-index: 1; width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--border); cursor: default; }
 .wf-dot::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
-.wf-dot-completed { background: #17a66a; }
+.wf-dot-completed { background: light-dark(#17a66a, #3fb979); }
 .wf-dot-failed { background: var(--failed); }
 .wf-dot-running { background: var(--running); }
 .wf-dot-pending { background: var(--amber); }
@@ -23,12 +24,16 @@
 .wf-link:hover { text-decoration: none; }
 .wf-row:hover .wf-link { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 .wf-meta { margin-left: auto; padding-left: 16px; font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wf-word-failed { color: var(--failed); font-weight: 500; }
-.wf-word-running { color: var(--running); font-weight: 500; }
+/* Runs: one line per cell, so a narrow window scrolls the table sideways instead of wrapping every row. */
+.runs td { white-space: nowrap; }
+/* Details takes the width left over, at least 30ch, and a failure's message is cut to fit (the whole text is its tooltip). */
+.runs td:last-child { width: 100%; max-width: 0; min-width: 30ch; }
+.runs .run-error { max-width: 60ch; }
 
 @media (prefers-reduced-motion: reduce) { .wf-dot-running::after { animation: none; } }
 @media (max-width: 640px) {
   .wf-controls input[type="search"] { width: auto; flex: 1; min-width: 0; }
-  .wf-row { min-height: 48px; }
-  .wf-link { font-size: 15px; }
+  .runs .toolbar input[type="search"] { min-width: 160px; }
+  .wf-row { min-height: 48px; padding-block: 12px; }
+  .wf-link { font-size: 15px; white-space: normal; overflow-wrap: anywhere; }
 }

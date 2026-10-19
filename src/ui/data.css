@@ -9,16 +9,22 @@
 .data-grid thead .row-number, .data-grid thead .pinned { z-index: 2; background: var(--surface); }
 .data-grid th button { width: 100%; min-height: 24px; padding: 0; border: 0; background: transparent; color: inherit; font-weight: 500; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .data-pane .table-scroll { padding-inline: 24px; }
+.data-pane .table-scroll > .notice { position: sticky; left: 0; }
 .data-grid .spacer td { height: auto; padding: 0; border: 0; }
 .data-grid td:hover { background: var(--surface); }
 .data-grid td:focus, .data-grid td[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface); }
 .cell-link { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
 .cell-link:hover { text-decoration-color: currentColor; }
-.data-grid button.folded { min-height: 0; padding: 0; border: 0; background: transparent; }
-.data-grid button.folded::before { content: "▸ "; }
 .resize-handle { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 2; width: 8px; cursor: col-resize; touch-action: none; }
 .grid-message { min-height: 24px; margin: 0; padding: 2px 24px; font-size: 12px; color: var(--muted); }
-.value-dialog pre { max-height: 60vh; margin: 16px 0; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; }
+.value-dialog { width: 640px; }
+.value-dialog .value { max-height: 60vh; margin-top: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.structured-value summary { cursor: pointer; }
+.structured-value[open] { max-height: 360px; overflow: auto; white-space: normal; }
+.structured-value ol { margin: 8px 0; padding-left: 20px; }
+.structured-value li { margin: 8px 0; }
+.structured-value dt { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.structured-value dd { margin-left: 0; overflow-wrap: anywhere; }
 .columns-trigger { display: inline-flex; align-items: center; gap: 8px; }
 .columns-trigger[aria-expanded="true"] { background: var(--hover); }
 .columns-count { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -44,5 +50,6 @@
 
 @media (max-width: 640px) {
   .data-pane .table-scroll { padding-inline: 12px; }
+  .data-pane .toolbar input[type="search"] { min-width: 160px; }
   .columns-option { min-height: 40px; }
 }

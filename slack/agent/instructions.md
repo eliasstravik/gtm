@@ -29,5 +29,5 @@ ordinary Next.js app on `@eliasstravik/gtm`. Only full members of the company's 
 
 ## Keys
 
-API keys never go in Slack or in the repo: people add them in the cockpit's Connections view. Tell anyone who pastes
+API keys never go in Slack or in the repo: people add them in the Console's Connections view. Tell anyone who pastes
 a key into Slack to revoke it.

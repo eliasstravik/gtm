@@ -1,7 +1,7 @@
 {
   "name": "@eliasstravik/gtm",
   "version": "0.0.1",
-  "description": "A company's go-to-market work as an ordinary Next.js project: context, workflows, a cockpit and an optional Slack agent.",
+  "description": "A company's go-to-market work as an ordinary Next.js project: context, workflows, a Console and an optional Slack agent.",
   "license": "MIT",
   "repository": {
     "type": "git",

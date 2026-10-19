@@ -18,7 +18,7 @@ gtm starts only registered workflows; `npx @eliasstravik/gtm check` reports a br
 
 ## Preview, yes in chat, run
 
-Runs never pause for people, and the cockpit has no start or approve buttons. For a risky or costly run:
+Runs never pause for people, and the Console has no start or approve buttons. For a risky or costly run:
 
 1. Run a preview: the same workflow with preview input (for example a row limit), whose return value carries
    the sample rows and the measured cost. Read it through `npx @eliasstravik/gtm run` (below).

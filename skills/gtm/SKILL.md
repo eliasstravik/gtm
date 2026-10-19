@@ -1,6 +1,6 @@
 ---
 name: gtm
-description: Sets up and maintains a company's go-to-market (GTM) project built on @eliasstravik/gtm, one Next.js repo on Vercel holding the company's context, workflows, cockpit and connections. Triggers when someone asks to set up GTM for a company ("set up GTM for Acme"), to write or change ICPs, personas or voice, to build, run or schedule outbound, enrichment or other GTM workflows, to open or extend the cockpit, to add connections or API keys, to deploy the GTM project or add its Slack agent, and on any work inside a folder that already holds a gtm project. Not for unrelated web apps, marketing websites, generic Next.js projects or one-off CRM scripts outside a gtm project.
+description: Sets up and maintains a company's go-to-market (GTM) project built on @eliasstravik/gtm, one Next.js repo on Vercel holding the company's context, workflows, Console and connections. Triggers when someone asks to set up GTM for a company ("set up GTM for Acme"), to write or change ICPs, personas or voice, to build, run or schedule outbound, enrichment or other GTM workflows, to open or extend the Console, to add connections or API keys, to deploy the GTM project or add its Slack agent, and on any work inside a folder that already holds a gtm project. Not for unrelated web apps, marketing websites, generic Next.js projects or one-off CRM scripts outside a gtm project.
 ---
 
 # gtm

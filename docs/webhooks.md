@@ -10,7 +10,7 @@ folder per sender.
   `x-vercel-protection-bypass` query parameter.
 - Create one bypass secret per sender, labeled with the sender's name, so it can be revoked alone. Never give
   a sender the one deployments see as `VERCEL_AUTOMATION_BYPASS_SECRET`; the proxy refuses that value here.
-- Bypass-carrying requests reach only `/api/hooks/*` (and Slack's `/eve/v1/slack`), never the cockpit views or its
+- Bypass-carrying requests reach only `/api/hooks/*` (and Slack's `/eve/v1/slack`), never the Console views or its
   read endpoints, so a vendor holding its URL cannot read Data or Context.
 - `/api/hooks/*` carries its own check, so it is exempt from the fail-closed notice.
 

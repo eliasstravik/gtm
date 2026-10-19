@@ -1,5 +1,5 @@
 /**
- * `gtm({ workflows })`: the handler behind app/api/gtm/[...path]/route.ts. Cockpit read endpoints, start/runs/cron and
+ * `gtm({ workflows })`: the handler behind app/api/gtm/[...path]/route.ts. Console read endpoints, start/runs/cron and
  * Connections (plan §3, §4). Every response is `cache-control: no-store`; errors are `{ error }`.
  */
 import { isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
@@ -49,13 +49,13 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
         return head === "start" ? await startRun(req, workflows, one) : await runStatus(one);
       }
 
-      // Defence in depth behind the proxy: a bypass holder (webhook vendor, Slack) never reads the cockpit.
-      if (hosted && carriesBypass(req)) throw new HttpError(403, "Requests carrying a protection bypass cannot read the cockpit");
+      // Defence in depth behind the proxy: a bypass holder (webhook vendor, Slack) never reads the Console.
+      if (hosted && carriesBypass(req)) throw new HttpError(403, "Requests carrying a protection bypass cannot read the Console");
       if (head === "connections" && !rest.length) {
         if (req.method === "POST") return await saveConnection(req);
         if (get) return await listConnections(req);
       }
-      if (!get) throw new HttpError(405, "The cockpit is read-only");
+      if (!get) throw new HttpError(405, "The Console is read-only");
       if (head === "shell" && !rest.length) return await shell();
       if (head === "release" && !rest.length) return await releaseStatus(url.searchParams);
       if (head === "context" && !rest.length) return await contextList();

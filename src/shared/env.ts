@@ -35,12 +35,12 @@ export function appPort(env: Env = process.env): number {
   return port;
 }
 
-/** Private hostnames the person admits to the local cockpit (GTM_ALLOWED_HOSTS, comma-separated, off by default). */
+/** Private hostnames the person admits to the local Console (GTM_ALLOWED_HOSTS, comma-separated, off by default). */
 export function allowedHosts(env: Env = process.env): string[] {
   return (value("GTM_ALLOWED_HOSTS", env) ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
 }
 
-/** The hosts that always reach the local cockpit. */
+/** The hosts that always reach the local Console. */
 export const LOOPBACK_HOSTS = ["127.0.0.1", "localhost"];
 
 /** Constant-time string comparison; false when either side is missing. */

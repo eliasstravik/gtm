@@ -4,7 +4,7 @@
 
 `npm run dev` (`npx @eliasstravik/gtm dev`) needs no account: it serves the project's own PGlite database on
 127.0.0.1 (data.md), applies pending migrations, and runs `next dev` with the Workflow SDK's local world. The
-cockpit is `http://127.0.0.1:$GTM_PORT/` (default 3000), with no login. Anything under `gtm dev` or `next dev` is
+Console is `http://127.0.0.1:$GTM_PORT/` (default 3000), with no login. Anything under `gtm dev` or `next dev` is
 never "hosted", whatever the env files say; the CLI loads env files exactly as Next does. Local data is
 development data and never moves to production.
 
@@ -55,7 +55,7 @@ Vercel's placeholder, which gtm treats as missing (add it again in Connections).
 ## `GTM_ALLOWED_HOSTS`
 
 Off by default. Comma-separated private hostnames (for example a Tailscale name, `box.tail1234.ts.net`) that
-the local cockpit admits besides `127.0.0.1` and `localhost`, matched against the request's Host. gtm dev still
+the local Console admits besides `127.0.0.1` and `localhost`, matched against the request's Host. gtm dev still
 listens on 127.0.0.1 only; `tailscale serve --bg --https=<port> http://127.0.0.1:$GTM_PORT` forwards that name to it with the Host kept (checked).
 
 **Warning: anyone on that private network gets in without a login**: they read Context and Data and can Save

@@ -56,6 +56,6 @@ Only full members of the company's Slack. Every eve entry hook (`onAppMention`, 
   `gh-signed-commit`, as that GitHub app (a verified bot commit), and Vercel redeploys. Plain `git push` is
   refused: on Pro, Vercel deploys a private repo's commits only when their author is a team member or a bot.
 - The start-run tool calls `POST /api/gtm/start/<workflow>` with the automation bypass header, so the run
-  lives in the app and shows in the cockpit (an in-process start would run in eve's own service and not
+  lives in the app and shows in the Console (an in-process start would run in eve's own service and not
   show). The tool reads `VERCEL_AUTOMATION_BYPASS_SECRET` and `VERCEL_PROJECT_PRODUCTION_URL` from the deployment.
 - `GTM_VERCEL_TOKEN` is never passed into the eve sandbox.

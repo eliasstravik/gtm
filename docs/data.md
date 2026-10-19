@@ -55,6 +55,8 @@ local database, or connect a Neon dev branch to Development and `vercel env pull
 
 ## The Data view
 
-Read-only, schema `public` only: estimated row counts (refreshed by `ANALYZE`, which `gtm dev` and
-`gtm migrate` run after migrations; "unknown" before the first one), pages of 100 rows, CSV export capped at
-10,000 rows / 5 MB with a "truncated" notice. It runs no SQL from the browser.
+Read-only, schema `public` only: one table at a time as a scrolling grid (rows are read as they scroll into view),
+with search, a one-column filter, sorting, a column chooser, and CSV or JSON export of what is shown (capped at
+10,000 rows / 5 MB with a "truncated" notice). A column named `name`, `title` or ending in `_name`/`_title` stays
+pinned on the left; columns ending in `score`, `verdict`, `priority`, `tier`, `fit`, `grade` or `rating` come right
+after it. It runs no SQL from the browser.

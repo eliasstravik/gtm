@@ -35,7 +35,7 @@ export async function init(args: string[]): Promise<void> {
     : `\n${rel} is already a gtm project: ${repaired.join("; ") || "nothing to restore, AGENTS.md block current"}.`);
   if (values.slack) console.log("agent/ holds the Slack agent template (existing files kept); see `npx @eliasstravik/gtm docs slack`.");
   console.log(`Next:${rel === "." ? "" : `\n  cd ${rel}`}
-  npm run dev                    cockpit on http://127.0.0.1:3000
+  npm run dev                    Console on http://127.0.0.1:3000
   npx @eliasstravik/gtm check    problems with their fixes
   then fill in context/company.md`);
 }

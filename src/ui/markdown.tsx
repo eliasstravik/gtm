@@ -33,7 +33,8 @@ const marked = new Marked({
   },
 });
 
-/** GitHub-flavored Markdown, rendered read-only: raw HTML shows as text and only http(s), mailto and relative links stay links. */
+/** GitHub-flavored Markdown, read-only: raw HTML as text, only http(s), mailto and relative links; front matter as YAML. */
 export function Markdown({ source }: { source: string }) {
-  return <div className="gtm-md" dangerouslySetInnerHTML={{ __html: marked.parse(source, { async: false }) }} />;
+  const md = source.replace(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/, "```yaml\n$1\n```\n");
+  return <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(md, { async: false }) }} />;
 }

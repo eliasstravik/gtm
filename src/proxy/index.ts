@@ -14,7 +14,7 @@ const PROBE_HOSTS = 32;
 const NOTICE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Protection required</title>
 <body style="font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem">
 <h1>Turn on Vercel Authentication → All Deployments</h1>
-<p>This cockpit stays closed while this deployment can be opened without Vercel's login. In the Vercel dashboard open
+<p>This Console stays closed while this deployment can be opened without Vercel's login. In the Vercel dashboard open
 Settings → Deployment Protection, set Vercel Authentication to <b>All Deployments</b> and save. This page clears
 within 5 minutes.</p></body>`;
 

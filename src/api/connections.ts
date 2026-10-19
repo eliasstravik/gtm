@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isHosted, safeEqual, value } from "../shared/env.js";
+import { environment, isHosted, safeEqual, value } from "../shared/env.js";
 import { jwtClaims, PROBE_PATH, PROTECTED_STATUSES, requestHost, vercelJwts } from "../shared/request.js";
 
 /** The fixed contents of `public/_gtm/probe.txt`. */
@@ -50,7 +50,7 @@ export function refusedName(name: string, hosted = isHosted()): boolean {
 function checkInput(body: unknown, hosted: boolean): { name: string; value: string } {
   const { name, value: v } = (body ?? {}) as { name?: unknown; value?: unknown };
   insist(typeof name === "string" && typeof v === "string", "Send JSON { name, value }.", 400);
-  insist(!refusedName(name, hosted), `${name} cannot be saved from the cockpit.`, 400);
+  insist(!refusedName(name, hosted), `${name} cannot be saved from the Console.`, 400);
   insist(exampleConnections().some((c) => c.name === name), `${name} is not listed in .env.example.`, 400);
   insist(v.length > 0 && v.length <= 32_768, "The value is empty or too long.", 400);
   insist(!/[\r\n\0]/.test(v), "The value must be one line.", 400);
@@ -157,7 +157,7 @@ type EnvVar = { key: string; target?: string[] | string; customEnvironmentIds?: 
 type Deployment = { uid: string; url: string; readyState?: string };
 
 /** Writes the value to Production as a sensitive variable, then redeploys the newest production deployment. */
-async function saveHosted(s: Session, name: string, v: string): Promise<{ ok: true; status: string; deploymentUrl?: string }> {
+async function saveHosted(s: Session, name: string, v: string): Promise<{ ok: true; status: string; id?: string; deploymentUrl?: string }> {
   const id = encodeURIComponent(s.projectId), team = `teamId=${encodeURIComponent(s.team)}`;
   const { envs = [] } = await vercel<{ envs?: EnvVar[] }>(s.token, `/v10/projects/${id}/env?${team}`);
   // Upsert silently splits a production variable shared with other environments (spike 1d), so those are refused.
@@ -177,18 +177,18 @@ async function saveHosted(s: Session, name: string, v: string): Promise<{ ok: tr
   // state. ERROR, CANCELED, DELETED and BLOCKED (a git commit Vercel refused) ones can never deploy again.
   const newest = deployments.find((d) => ["READY", "BUILDING", "INITIALIZING", "QUEUED"].includes(d.readyState ?? ""));
   if (!newest) return { ok: true, status: "Saved. There is no production deployment to redeploy yet; the next one uses it." };
-  const created = await vercel<{ url: string; readyState?: string }>(s.token, `/v13/deployments?${team}`,
+  const created = await vercel<{ id: string; url: string; readyState?: string }>(s.token, `/v13/deployments?${team}`,
     { name: project.name, deploymentId: newest.uid, target: "production" }).catch((e: Error) => e);
   if (created instanceof Error) return { ok: true, status: `Saved, but the redeploy failed: ${created.message} Redeploy production in Vercel to apply it.` };
   return { ok: true, status: `Saved. Production is redeploying (${(created.readyState ?? "queued").toLowerCase()}).`,
-    deploymentUrl: `https://${created.url}` };
+    id: created.id, deploymentUrl: `https://${created.url}` };
 }
 
 /** GET /api/gtm/connections: names and descriptions from .env.example, set or missing here, and how Save works. */
 export async function listConnections(req: Request): Promise<Response> {
   const { save } = await access(req);
   const connections = exampleConnections().map((c) => ({ ...c, set: value(c.name) !== undefined }));
-  return reply({ connections, save, tokenWarning: tokenWarning() });
+  return reply({ connections, environment: environment(), save, tokenWarning: tokenWarning() });
 }
 
 /** POST /api/gtm/connections { name, value }: locally into .env.local, hosted into Vercel's Production env. Values are
@@ -219,7 +219,16 @@ export async function saveConnection(req: Request): Promise<Response> {
   }
 }
 
-/** GET /api/gtm/release?id=<deployment id> → { state: "updating" | "live" | "failed", details? }. (Stub: owned by the Connections helper.) */
-export async function releaseStatus(_params: URLSearchParams): Promise<Response> {
-  return reply({ release: null });
+/** GET /api/gtm/release?id=dpl_… → { release: { state: "updating" | "live" | "failed", details? } | null }: the badge's view
+ * of the redeploy a hosted save started. READY but STAGED or ROLLING is built, not yet serving production. */
+export async function releaseStatus(params: URLSearchParams): Promise<Response> {
+  const token = value("GTM_VERCEL_TOKEN"), projectId = value("VERCEL_PROJECT_ID"), id = params.get("id") ?? "";
+  if (!isHosted() || !token || !projectId) return reply({ release: null });
+  if (!/^dpl_[A-Za-z0-9]{1,64}$/.test(id)) return reply({ error: "Send ?id=dpl_…" }, 400);
+  const d = await teamId(token, projectId).then((team) => vercel<{ projectId?: string; readyState?: string; readySubstate?: string;
+    inspectorUrl?: string }>(token, `/v13/deployments/${id}?teamId=${encodeURIComponent(team)}`)).catch((e: Refused) => e);
+  if (d instanceof Refused || d.projectId !== projectId) return reply({ error: d instanceof Refused ? d.message : "Not this project's deployment." }, 502);
+  const state = d.readyState === "ERROR" || d.readyState === "CANCELED" ? "failed"
+    : d.readyState === "READY" && (d.readySubstate ?? "PROMOTED") === "PROMOTED" ? "live" : "updating";
+  return reply({ release: { state, ...(state === "failed" && d.inspectorUrl?.startsWith("https://") ? { details: d.inspectorUrl } : {}) } });
 }

@@ -109,7 +109,7 @@ async function localDatabaseUrl() {
 }
 
 async function runsCount() {
-  return (await json("/api/gtm/workflows")).runs.length;
+  return (await json("/api/gtm/workflows/runs")).data.length;
 }
 
 before(async () => {
@@ -161,20 +161,22 @@ test("7.2 gtm dev: 127.0.0.1 only; four views + API with the local database and 
         const lock = JSON.parse(read(".gtm/db.lock"));
         assert.ok(sockets.some((x) => x.port === lock.port), `the PGlite server (lock port ${lock.port}) is not in the tree`);
       });
-      await t.test("the four views (and /) render as HTML", async () => {
-        for (const view of ["/", "/context", "/workflows", "/data", "/connections"]) {
+      await t.test("the Console's views (and /) render as HTML", async () => {
+        for (const view of ["/", "/context", "/workflows", "/workflows/record", "/runs", "/data", "/connections"]) {
           const r = await get(view);
           assert.equal(r.status, 200, `GET ${view} → ${r.status}: ${r.text.slice(0, 300)}`);
           assert.match(String(r.headers["content-type"]), /text\/html/, view);
         }
         assert.equal((await get("/no-such-view")).status, 404, "unknown first segment → 404");
+        assert.equal((await get("/data/extra")).status, 404, "an extra segment → 404");
       });
       await t.test("their API endpoints return the contract JSON", async () => {
         const shell = await json("/api/gtm/shell");
         assert.equal(shell.company, "GTM", "no context/company.md → company 'GTM'");
         assert.equal(shell.environment, "local");
         assert.equal(shell.database, "127.0.0.1", "database = identity of the local URL");
-        assert.deepEqual(shell.artifacts, []);
+        assert.equal(shell.deployment, null);
+        assert.equal(typeof shell.connectionsMissing, "number");
         const context = await json("/api/gtm/context");
         const ctx = context.groups.find((g) => g.name === "Context");
         assert.ok(ctx, JSON.stringify(context));
@@ -189,8 +191,9 @@ test("7.2 gtm dev: 127.0.0.1 only; four views + API with the local database and 
         assert.ok(unlisted.status >= 400 && unlisted.status < 500, `a file the listing does not return → ${unlisted.status}`);
         const workflows = await json("/api/gtm/workflows");
         assert.deepEqual(workflows.workflows, []);
-        assert.ok(Array.isArray(workflows.runs));
         assert.equal(workflows.runsUrl, null);
+        const runs = await json("/api/gtm/workflows/runs");
+        assert.ok(Array.isArray(runs.data) && typeof runs.hasMore === "boolean", JSON.stringify(runs));
         assert.deepEqual(await json("/api/gtm/data"), { tables: [] });
         const connections = await json("/api/gtm/connections");
         assert.ok(Array.isArray(connections.connections));
@@ -273,14 +276,15 @@ export async function record(input: { name: string }) {
       let printedId;
       try { printedId = JSON.parse(result.stdout).runId; } catch { printedId = result.output.match(/wrun_[A-Za-z0-9]+/)?.[0]; }
       const runs = await poll(async () => {
-        const list = (await json("/api/gtm/workflows")).runs;
+        const list = (await json("/api/gtm/workflows/runs?workflow=record")).data;
         return list.some((r) => /record/.test(r.workflow) && r.status === "completed") && list;
       }, { timeout: MIN });
-      assert.ok(runs, "no completed record run in /api/gtm/workflows");
+      assert.ok(runs, "no completed record run in /api/gtm/workflows/runs");
       const run = runs.find((r) => (printedId ? r.id === printedId : /record/.test(r.workflow)));
       assert.ok(run, `run ${printedId} not listed: ${JSON.stringify(runs)}`);
-      for (const k of ["id", "workflow", "status", "createdAt"]) assert.equal(typeof run[k], "string", k);
-      assert.ok(run.durationMs === null || typeof run.durationMs === "number");
+      for (const k of ["id", "workflow", "status", "createdAt", "completedAt"]) assert.equal(typeof run[k], "string", k);
+      const last = (await json("/api/gtm/workflows")).workflows.find((w) => w.name === "record")?.lastRun;
+      assert.equal(last?.status, "completed", `the workflow's last run: ${JSON.stringify(last)}`);
       s.runId = run.id;
     });
 
@@ -293,12 +297,17 @@ export async function record(input: { name: string }) {
       assert.equal(page.table, "records");
       assert.ok(page.columns.includes("name"), JSON.stringify(page.columns));
       assert.ok(page.rows.some((row) => row.includes(s.marker)), JSON.stringify(page.rows));
-      assert.equal(page.pageSize, 100);
-      assert.equal(page.hasMore, false);
+      assert.equal(page.offset, 0);
+      assert.ok(page.total >= 1 && page.fields.some((f) => f.name === "name"), JSON.stringify(page));
+      const found = await json(`/api/gtm/data/records?q=${s.marker}&columns=name`);
+      assert.deepEqual([found.total, found.columns, found.rows], [1, ["name"], [[s.marker]]]);
+      assert.equal((await json("/api/gtm/data/records?q=no-such-row-anywhere")).total, 0);
       const csv = await get("/api/gtm/data/records/csv");
       assert.equal(csv.status, 200);
       assert.match(String(csv.headers["content-type"]), /text\/csv/);
       assert.ok(csv.text.includes(s.marker));
+      const exported = JSON.parse((await get(`/api/gtm/data/records/json?q=${s.marker}`)).text);
+      assert.equal(exported[0]?.name, s.marker);
     });
   });
 
@@ -358,26 +367,15 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
     });
   });
 
-test("7.5 app/pipeline/page.tsx shows under Artifacts and renders in the shell, without restarting gtm dev", { timeout: 10 * MIN }, async (t) => {
+test("7.5 the Console's sidebar wraps every view, with a menu button for narrow screens", { timeout: 10 * MIN }, async (t) => {
   if (!ready()) return t.skip("no project (7.1 failed)");
   await ensureDev();
-  const pid = s.dev.pid;
-  write("app/pipeline/page.tsx", `export default function Pipeline() {
-  return <main><h1>Pipeline</h1><p>acceptance-pipeline-marker</p></main>;
-}
-`);
-  const listed = await poll(async () => (await json("/api/gtm/shell")).artifacts.includes("pipeline"), { timeout: MIN });
-  assert.ok(listed, `pipeline not in /api/gtm/shell artifacts: ${JSON.stringify((await json("/api/gtm/shell")).artifacts)}`);
-  const r = await get("/pipeline");
-  assert.equal(r.status, 200, r.text.slice(0, 300));
-  assert.ok(r.text.includes("acceptance-pipeline-marker"), "page content");
-  for (const view of ["/workflows", "/data", "/connections"]) {
-    assert.ok(r.text.includes(`href="${view}"`), `the shell's menu (${view}) wraps the page`);
+  for (const view of ["/", "/runs", "/data"]) {
+    const r = await get(view);
+    assert.equal(r.status, 200, r.text.slice(0, 300));
+    for (const link of ["/workflows", "/runs", "/data", "/connections"]) assert.ok(r.text.includes(`href="${link}"`), `${view}: sidebar link ${link}`);
+    assert.ok(r.text.includes('class="sidebar"') && r.text.includes('aria-label="Open menu"'), `${view}: sidebar, and a menu button`);
   }
-  assert.ok(r.text.includes('href="/context"') || r.text.includes('href="/"'), "the shell's menu (Context) wraps the page");
-  assert.ok(r.text.includes('class="gtm-sidebar"') && r.text.includes('aria-label="Open menu"'), "sidebar, and a menu button for narrow screens");
-  assert.equal(s.dev.pid, pid);
-  assert.equal(s.dev.exitCode, undefined, "gtm dev was not restarted");
 });
 
 test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
@@ -401,8 +399,8 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
     assert.equal(await runsCount(), before);
   });
 
-  await t.test("Host: evil.test is refused on a cockpit view and on app/pipeline", async () => {
-    for (const p of ["/context", "/pipeline", "/api/gtm/shell"]) {
+  await t.test("Host: evil.test is refused on Console views and the API", async () => {
+    for (const p of ["/context", "/runs", "/api/gtm/shell"]) {
       assert.equal((await get(p)).status, 200, `${p} control on 127.0.0.1`);
       refused(await get(p, { host: "evil.test" }), `Host evil.test on ${p}`);
       refused(await get(p, { host: `evil.test:${PORT}` }), `Host evil.test:${PORT} on ${p}`);
@@ -420,7 +418,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
     assert.equal(await runsCount(), before);
   });
 
-  await t.test("hosted mode: bypass-carrying requests are refused on pages and cockpit read endpoints", async (st) => {
+  await t.test("hosted mode: bypass-carrying requests are refused on pages and Console read endpoints", async (st) => {
     assertOk(await npm(["run", "build"]), "npm run build");
     // Fail-closed probe (§3): the proxy fetches https://<Host>/_gtm/probe.txt. A local HTTPS stub answering 401
     // stands in for Vercel's login wall, so the proxy believes the deployment is protected; the requests below use
@@ -455,8 +453,9 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
         ["query parameter", (p) => at(`${p}${p.includes("?") ? "&" : "?"}x-vercel-protection-bypass=s`)],
         ["bypass cookie", (p) => at(p, { cookie: `_vercel_jwt=${jwt}` })],
       ];
-      const targets = ["/data", "/context", "/pipeline", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=AGENTS.md",
-        "/api/gtm/workflows", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv", "/api/gtm/connections"];
+      const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=AGENTS.md",
+        "/api/gtm/workflows", "/api/gtm/workflows/runs", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv",
+        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x"];
       for (const [how, send] of carriers) for (const p of targets) refused(await send(p), `${how} on ${p}`);
     } finally {
       await next.stop();
