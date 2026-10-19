@@ -1,0 +1,44 @@
+# Fails the build when a secret or private data (AGENTS.md, Public repo) is in any file of the history, any commit
+# message, or a pull request's title or description: gitleaks' default rules (keys, tokens) and our own
+# (.github/private-data.toml: Tailscale names and addresses, deployment hostnames, emails, home-folder paths). Findings
+# are printed redacted.
+name: privacy
+
+on:
+  push:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.28.0
+  GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+
+      - name: Files in every commit
+        run: .github/leaks.sh git --log-opts=--all . < /dev/null
+
+      - name: Commit messages
+        run: git log --all --format='%H%n%B' | .github/leaks.sh stdin
+
+      - name: Pull request title and description
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n%s\n' "$TITLE" "$BODY" | .github/leaks.sh stdin

@@ -11,8 +11,8 @@ process.env.VERCEL_ENV = "production";
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 // Shaped like a Vercel OIDC token for this project (the channel must refuse it without even verifying it).
 const oidc = `${b64({ alg: "RS256", typ: "JWT", kid: "k1" })}.${b64({
-  iss: "https://oidc.vercel.com/stravik", sub: "owner:stravik:project:acme-gtm:environment:production",
-  aud: "https://vercel.com/stravik", project_id: "prj_gtm", environment: "production", owner: "stravik",
+  iss: "https://oidc.vercel.com/acme", sub: "owner:acme:project:acme-gtm:environment:production",
+  aud: "https://vercel.com/acme", project_id: "prj_gtm", environment: "production", owner: "acme",
   iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600,
 })}.c2lnbmF0dXJl`;
 const callers = {
