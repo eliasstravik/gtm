@@ -8,7 +8,8 @@
  * dir) · GTM_TEST_LOGS (where every command's log goes; default <work>/logs, kept) · GTM_TEST_PORT (first of three
  * consecutive ports; default 4710) · GTM_TEST_KEEP=1 (keep the project and its node_modules).
  * Needs Linux (`ss`, /proc), tar, openssl and the npm registry. One shared project, so order matters:
- * 7.1 → 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.7 → 7.6 (`init --slack` adds eve, so it goes last).
+ * 7.1 → 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.7 → 7.6 (`init --slack` adds eve, so it goes last), then 7.9 in a second
+ * project (`init --example` and the docs recipes).
  *
  * Every command runs with an empty environment except PATH and HOME (needed to run anything at all) and the
  * harness's NEXT_TELEMETRY_DISABLED=1 (and eve's EVE_TELEMETRY_DISABLED=1, which `eve dev`/`eve build` honour), plus
@@ -655,4 +656,58 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
     // A local `next build` does not compile agent/ (eve builds it on Vercel). Report eve's own build; never fail on it.
     const eveBuild = await run(file("node_modules/.bin/eve"), ["build", "--skip-sandbox-prewarm"], { cwd: s.dir, name: "eve-build", timeout: 10 * MIN });
     t.diagnostic(`eve build --skip-sandbox-prewarm: exit ${eveBuild.code} (log ${eveBuild.log})${eveBuild.code ? `\n${tail(eveBuild.output, 1500)}` : ""}`);
+  });
+
+test("7.9 init --example builds, gtm check passes and the example runs; the docs recipes install, migrate, build and run",
+  { timeout: 40 * MIN }, async (t) => {
+    if (!s.cli) return t.skip("no CLI (packing failed)");
+    await stopDev();
+    const main = s.dir;
+    s.dir = path.join(s.work, "gtm-demo");
+    try {
+      assertOk(await init(["--company", "Demo", "--example"], null), "gtm init --company Demo --example");
+      assert.ok(ready(), "init did not install the package");
+      assertOk(await npm(["run", "build"]), "npm run build with the example");
+      assertOk(await gtm(["check"]), "gtm check with the example");
+      await startDev();
+      const example = assertOk(await gtm(["run", "example-import"], { env: { GTM_PORT: String(PORT) } }), "gtm run example-import");
+      assert.match(example.stdout, /"saved":\s*3/, `the example saved its three samples:\n${example.output}`);
+      assert.ok((await json("/api/gtm/data")).tables.some((x) => x.name === "example_companies"), "example_companies shows in Data");
+
+      // The recipes as an agent installs them, from the installed package's docs, README registry entries included.
+      const recipes = path.join(s.dir, "node_modules/@eliasstravik/gtm/docs/recipes");
+      let imports = "", entries = "";
+      for (const name of ["import-list", "enrich-companies", "weekly-new-companies"]) {
+        fs.cpSync(path.join(recipes, name, "workflows"), file("workflows"), { recursive: true });
+        fs.appendFileSync(file("db/schema.ts"), `\n${fs.readFileSync(path.join(recipes, name, "schema.ts"), "utf8")}`);
+        const readme = fs.readFileSync(path.join(recipes, name, "README.md"), "utf8");
+        imports += `${readme.match(/import \{ \w+ \} from "\.\/[\w-]+";/)[0]}\n`;
+        entries += `${readme.match(/```ts\n([\s\S]*?)\n```/)[1]}\n`;
+      }
+      const registry = read("workflows/index.ts");
+      write("workflows/index.ts", imports + registry.replace("export const workflows = {\n", `export const workflows = {\n${entries}`));
+      write("vercel.json", JSON.stringify({ crons: [{ path: "/api/gtm/cron/weekly-new-companies", schedule: "0 7 * * 1" }] }, null, 2));
+      assertOk(await npm(["run", "db:generate"]), "npm run db:generate with the recipes");
+      assertOk(await gtm(["migrate"]), "gtm migrate with the recipes");
+      const listed = await poll(async () => {
+        const names = (await json("/api/gtm/workflows")).workflows.map((w) => w.name);
+        return ["import-list", "enrich-companies", "weekly-new-companies"].every((n) => names.includes(n)) && names;
+      }, { timeout: 2 * MIN });
+      assert.ok(listed, "the recipes never appeared in /api/gtm/workflows");
+      const input = { companies: [{ name: "Acme", domain: "https://www.acme.example/about" }, { name: "Globex", domain: "globex.example" }, { name: "No domain", domain: "" }], source: "acceptance" };
+      const imported = assertOk(await gtm(["run", "import-list", "--input", JSON.stringify(input)], { env: { GTM_PORT: String(PORT) } }), "gtm run import-list");
+      assert.match(imported.stdout, /"saved":\s*2/, imported.output);
+      assert.match(imported.stdout, /No domain/, "the row without a domain is named");
+      const weekly = assertOk(await gtm(["run", "weekly-new-companies"], { env: { GTM_PORT: String(PORT) } }), "gtm run weekly-new-companies");
+      assert.match(weekly.stdout, /"companies":\s*2/, weekly.output);
+      const tables = (await json("/api/gtm/data")).tables.map((x) => x.name);
+      for (const table of ["companies", "company_profiles", "weekly_new_companies"]) assert.ok(tables.includes(table), `${table} in Data: ${tables}`);
+      await stopDev();
+      // enrich-companies needs a model to run; its build (types included) is checked here.
+      assertOk(await npm(["run", "build"]), "npm run build with the recipes");
+      assertOk(await gtm(["check"]), "gtm check with the recipes");
+    } finally {
+      await stopDev();
+      s.dir = main;
+    }
   });

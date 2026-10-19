@@ -12,17 +12,18 @@ const SPECIAL = new Set(["gitignore", ".gitignore", "package.json", "AGENTS.md",
 /** The eve version `--slack` adds (the package's optional peer). */
 const EVE = "0.80.1";
 
-const USAGE = "Usage: gtm init [dir] [--company <name>] [--slack]";
+const USAGE = "Usage: gtm init [dir] [--company <name>] [--slack] [--example]";
 
 /**
- * `gtm init [dir] [--company <name>] [--slack] [--package <spec>] [--no-install]`: copies the starter into an empty
+ * `gtm init [dir] [--company <name>] [--slack] [--example] [--package <spec>] [--no-install]`: copies the starter into an empty
  * folder, or repairs an existing gtm project (restores missing wiring and refreshes the AGENTS.md block, nothing else).
  * With no dir it repairs the gtm project in this folder, else creates ./gtm-<company> (asking for the company on a
- * terminal when --company is missing). `--package` (or GTM_PACKAGE_SPEC) replaces the @eliasstravik/gtm dependency spec; it and `--no-install`
+ * terminal when --company is missing). `--example` (new projects only, for demos and tests) adds the package's example/
+ * overlay: one workflow, its table and migration, and a context file, each marked as an example. `--package` (or GTM_PACKAGE_SPEC) replaces the @eliasstravik/gtm dependency spec; it and `--no-install`
  * are for tests.
  */
 export async function init(args: string[]): Promise<void> {
-  const options = { company: { type: "string" }, slack: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } } as const;
+  const options = { company: { type: "string" }, slack: { type: "boolean" }, example: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } } as const;
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options });
   if (positionals.length > 1) throw new Error(USAGE);
   // No folder: repair the project here, else create ./gtm-<company>, never a project inside a project.
@@ -31,8 +32,10 @@ export async function init(args: string[]): Promise<void> {
   const dir = resolve(positionals[0] ?? (here ? "." : projectFolder(company!)));
   const starter = join(packageRoot(), "starter");
   const fresh = !isGtmProject(dir);
+  if (values.example && !fresh) throw new Error(`${dir} is already a gtm project; --example is only for a new one.`);
   const repaired = fresh ? [] : repair(dir, starter);
   if (fresh) create(dir, starter, values.package ?? process.env.GTM_PACKAGE_SPEC, company);
+  if (values.example) cpSync(join(packageRoot(), "example"), dir, { recursive: true });
   const addedEve = values.slack ? addSlack(dir) : false;
   if (fresh || addedEve || !existsSync(join(dir, "node_modules"))) {
     if (values["no-install"]) console.log("Skipped npm install (--no-install).");
@@ -41,6 +44,7 @@ export async function init(args: string[]): Promise<void> {
   const rel = relative(process.cwd(), dir) || ".";
   console.log(fresh ? `\nCreated a gtm project in ${rel}.`
     : `\n${rel} is already a gtm project: ${repaired.join("; ") || "nothing to restore, AGENTS.md block current"}.`);
+  if (values.example) console.log("Added the example: workflows/example-import.ts (`npx @eliasstravik/gtm run example-import`), its table and context/example-icp.md; the workflow file says how to remove it.");
   if (values.slack) console.log("agent/ holds the Slack agent template (existing files kept); see `npx @eliasstravik/gtm docs slack`.");
   console.log(`Next:${rel === "." ? "" : `\n  cd ${rel}`}
   npm run dev                    Console on http://127.0.0.1:3000

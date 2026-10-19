@@ -1,5 +1,8 @@
 # Workflows
 
+Ready-made workflows (import a list, enrich companies, a weekly scheduled job) are recipes to copy when a person
+asks for one: recipes.md.
+
 ## The registry
 
 `workflows/index.ts` exports `workflows = { <name>: workflowFn }` (typed `satisfies Registry`, from

@@ -26,8 +26,8 @@ jobs:
       - name: Slack agent tests (fake Slack, eve's own eval runner)
         run: node --test test/slack/*.test.mjs
 
-      - name: gtm init folder choice (built CLI, no install)
-        run: node --test test/init.test.mjs
+      - name: gtm skill form, gtm init folder choice (built CLI, no install)
+        run: node --test test/skill.test.mjs test/init.test.mjs
 
       - name: Pack
         run: |

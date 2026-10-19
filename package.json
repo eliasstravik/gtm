@@ -15,6 +15,7 @@
     "dist",
     "docs",
     "starter",
+    "example",
     "skills",
     "migrations",
     "slack",
@@ -54,8 +55,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && cp src/ui/*.css dist/ui/ && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && node --test test/slack/*.test.mjs",
-    "test": "node --test test/slack/*.test.mjs test/init.test.mjs && node --test test/acceptance.test.mjs",
+    "check": "npm run typecheck && node --test test/slack/*.test.mjs test/skill.test.mjs",
+    "test": "node --test test/slack/*.test.mjs test/skill.test.mjs test/init.test.mjs && node --test test/acceptance.test.mjs",
     "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1 && cat src/ui/*.css | wc -l"
   },
   "dependencies": {

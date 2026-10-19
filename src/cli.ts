@@ -6,15 +6,15 @@ type Command = (args: string[]) => Promise<void>;
 
 const USAGE = `gtm: a company's go-to-market work as an ordinary Next.js project (npx @eliasstravik/gtm <command>)
 
-  init [dir] [--company <name>] [--slack]
+  init [dir] [--company <name>] [--slack] [--example]
                             create a project (default ./gtm-<company>) in an empty folder, or repair one
-                            (missing wiring, AGENTS.md block)
+                            (missing wiring, AGENTS.md block); --example adds one small marked example
   dev                       run the Console and workflows on 127.0.0.1:$GTM_PORT (default 3000)
   migrate                   apply database migrations (the package's, then db/migrations)
   check [--prod]            report problems with their fixes; print the local DATABASE_URL
   run <workflow> [--input <json>] [--prod] [--no-wait]
                             start a run and print its status, return value and error
-  docs [topic]              print the docs of this version`;
+  docs [topic]              print the docs of this version (recipes/<name> for a recipe)`;
 
 // Loaded on demand so `gtm docs` never loads the database stack.
 const commands: Record<string, () => Promise<Command>> = {

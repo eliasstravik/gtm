@@ -1,0 +1,11 @@
+// Drizzle tables owned by workflows, in schema `public` (schema `gtm` is the package's).
+// After a change: `npm run db:generate`, then `npm run db:migrate`.
+import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+
+/** An example from `gtm init --example` (workflows/example-import.ts). */
+export const exampleCompanies = pgTable("example_companies", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  domain: text("domain").notNull().unique(),
+  savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+});

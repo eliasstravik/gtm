@@ -11,7 +11,8 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
 ## Get started
 
 1. **Skill**, for any agent: `npx skills add eliasstravik/gtm -g`, then ask your agent to "set up GTM for Acme"
-   (it runs `npx @eliasstravik/gtm init --company Acme`, which creates `./gtm-acme`).
+   (it runs `npx @eliasstravik/gtm init --company Acme`, which creates `./gtm-acme` with the base files only, then
+   asks what to add). For a demo, `init --company Acme --example` adds one small marked example workflow.
 2. **Claude Code plugin**: `/plugin marketplace add eliasstravik/gtm` then `/plugin install gtm@eliasstravik`
    (or `npx plugins add eliasstravik/gtm`).
 3. **Deploy button**: deploys the starter at `v0.0.1` as a new Vercel project with Neon, suggested as
@@ -41,6 +42,7 @@ The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
 | Topic | |
 | --- | --- |
 | [layout](docs/layout.md) | the project layout and what the Console reads |
+| [recipes](docs/recipes.md) | ready-made workflows to copy: import a list, enrich companies, a weekly scheduled job |
 | [context](docs/context.md) | the basics at setup, and a suggested layout for company facts, members, ICPs, personas |
 | [interaction](docs/interaction.md) | how agents talk to the GTM team: plain replies, one question at a time, what needs a yes |
 | [workflows](docs/workflows.md) | the registry, preview → yes in chat → run, `gtm run`, run size |
