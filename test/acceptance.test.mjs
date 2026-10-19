@@ -206,6 +206,7 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         }
         assert.equal(connections.save.mode, "local");
         assert.equal(connections.tokenWarning, null);
+        assert.deepEqual(await json("/api/gtm/database"), { mode: "local" }, "Open database starts Studio here");
       });
     } finally {
       fs.rmSync(file("context"), { recursive: true, force: true });
@@ -320,6 +321,44 @@ export async function record(input: { name: string }) {
       const exported = JSON.parse((await get(`/api/gtm/data/records/json?q=${s.marker}`)).text);
       assert.equal(exported[0]?.name, s.marker);
     });
+
+    await t.test("CSV export puts a ' before text a spreadsheet would run as a formula; numbers stay", async () => {
+      const names = ["=1+1", "+SUM(A1)", "-2+3", "@cmd", "\tx", " =HYPERLINK(1)", "-5", "+1.5e3", "plain"];
+      await sql(s.dir, s.dbUrl, `insert into records (name) values ${names.map((_, i) => `($${i + 1})`).join(", ")}`, names);
+      try {
+        const lines = (await get("/api/gtm/data/records/csv?columns=name")).text.split("\n");
+        for (const name of names) {
+          const safe = /^\s*[=+@-]|^\t/.test(name) && !/^[+-][\d.e]+$/.test(name) ? `'${name}` : name;
+          assert.ok(lines.includes(safe), `${JSON.stringify(name)} → ${JSON.stringify(safe)} in ${JSON.stringify(lines)}`);
+        }
+      } finally {
+        await sql(s.dir, s.dbUrl, "delete from records where name = any($1)", [names]);
+      }
+    });
+
+    await t.test("Open database: Drizzle Studio on 127.0.0.1 reads this database, is reused, and goes when gtm dev is killed", async () => {
+      const open = () => get("/api/gtm/database/open", { method: "POST", body: {} });
+      const first = await open();
+      assert.equal(first.status, 200, first.text.slice(0, 500));
+      const { url } = first.json(), port = Number(url.match(/^https:\/\/local\.drizzle\.studio\/\?port=(\d+)$/)?.[1]);
+      assert.ok(port, url);
+      assert.deepEqual((await open()).json(), { url }, "a second press reuses the same Studio");
+      const sockets = devSockets();
+      assertLoopbackOnly(sockets);
+      assert.ok(sockets.some((x) => x.port === port), `Studio (port ${port}) is not in gtm dev's tree: ${JSON.stringify(sockets)}`);
+      // What local.drizzle.studio sends: the row comes back through PGlite's one session.
+      const query = await request(port, "/", { method: "POST", body: { type: "proxy",
+        data: { sql: "select name from records where name = $1", params: [s.marker], method: "all", mode: "object" } } });
+      assert.equal(query.status, 200, query.text.slice(0, 300));
+      assert.ok(query.text.includes(s.marker), query.text.slice(0, 300));
+      assert.ok((await json("/api/gtm/data/records")).total >= 1, "the Console still reads alongside Studio");
+      // Not like Ctrl+C (which signals the whole group): only gtm dev itself, so Studio has to notice on its own.
+      process.kill(s.dev.pid, "SIGTERM");
+      assert.ok(await within(s.dev.exited, MIN), "gtm dev did not exit on SIGTERM");
+      assert.ok(await poll(async () => !(await portOpen(port)), { timeout: 30_000 }), `Studio still answers on ${port} after gtm dev exited`);
+      await stopDev();
+      await startDev();
+    });
   });
 
 test("7.4 Connections: lists .env.example; Save writes .env.local and flips to set; values round-trip; refusals",
@@ -404,6 +443,8 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       const save = await get("/api/gtm/connections", { method: "POST", headers, body: { name: "ACME_API_KEY", value: "evil" } });
       assert.equal(save.status, 403, `Save ${JSON.stringify(headers)} → ${save.status}`);
       assert.equal(exists(".env.local") ? read(".env.local") : null, envLocal, ".env.local unchanged");
+      const studio = await get("/api/gtm/database/open", { method: "POST", headers, body: {} });
+      assert.equal(studio.status, 403, `Open database ${JSON.stringify(headers)} → ${studio.status}`);
       const flow = await get("/.well-known/workflow/v1/flow", { method: "POST", headers, body: {} });
       assert.equal(flow.status, 403, `workflow flow route ${JSON.stringify(headers)} → ${flow.status}`);
     }
@@ -456,6 +497,11 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       assert.ok(probes > 0, "the proxy never requested /_gtm/probe.txt");
       st.diagnostic(`probe requests answered 401 by the stub: ${probes}`);
       assert.equal((await at("/data")).status, 200, "control: /data without bypass");
+      // No GTM_VERCEL_TOKEN or NEON_PROJECT_ID: Vercel's deep link to the project's Storage tab.
+      const database = (await at("/api/gtm/database")).json();
+      assert.deepEqual([database.mode, database.label], ["link", "Open in Vercel"], JSON.stringify(database));
+      assert.ok(database.url.startsWith("https://vercel.com/d?to=") && database.url.includes("%2Fstores"), database.url);
+      refused(await request(START_PORT, "/api/gtm/database/open", { method: "POST", host, body: {} }), "hosted Open database POST");
       const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
       const jwt = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ aud: host, bypass: "s", iat: 1, sub: "protection-bypass-automation" })}.sig`;
       const carriers = [
@@ -466,7 +512,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       ];
       const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=AGENTS.md",
         "/api/gtm/workflows", "/api/gtm/workflows/runs", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv",
-        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x"];
+        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x", "/api/gtm/database"];
       for (const [how, send] of carriers) for (const p of targets) refused(await send(p), `${how} on ${p}`);
     } finally {
       await next.stop();
@@ -488,6 +534,11 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       if (s.runId) refused(await get(`/api/gtm/runs/${s.runId}`, { host: BOX }), `runs on ${BOX}`);
       assert.equal(await runsCount(), before);
       refused(await get("/context", { host: "evil.test" }), "evil.test still refused");
+      // Not this machine's Tailscale name (or no Tailscale at all): Studio is not shared there, the answer says where it opens.
+      const studio = await get("/api/gtm/database/open", { method: "POST", host: BOX,
+        headers: { origin: `https://${BOX}`, "sec-fetch-site": "same-origin", "tailscale-user-login": "owner@example.com" }, body: {} });
+      assert.equal(studio.status, 409, `Open database on ${BOX} → ${studio.status}: ${studio.text.slice(0, 300)}`);
+      assert.match(studio.json().error, /computer running gtm dev/);
     } finally {
       await stopDev();
       await startDev();
@@ -557,6 +608,9 @@ loadEnvConfig(process.cwd(), false, { info() {}, error() {} }, true);
         [new URL(s.dbUrl).hostname]);
       try {
         expectRefused(await viaDb(), "db()");
+        const studio = await get("/api/gtm/database/open", { method: "POST", body: {} });
+        assert.equal(studio.status, 409, `Open database on a stamped database → ${studio.status}: ${studio.text.slice(0, 300)}`);
+        assert.match(studio.text, PRODUCTION_DB);
         expectRefused(await gtm(["migrate"]), "gtm migrate (gtm dev holding the database)");
         fs.appendFileSync(envLocal, "\nVERCEL_ENV=production\n");
         expectRefused(await viaDb(), "db() with VERCEL_ENV=production in .env.local");

@@ -165,13 +165,15 @@ export async function dataPage(name: string, p: URLSearchParams): Promise<Respon
   }));
 }
 
+/** A CSV cell. Text a spreadsheet would run as a formula (= + - @ first, or a tab or CR) gets a leading '; numbers stay. */
 function csvCell(v: unknown): string {
-  const s =
+  let s =
     v == null ? ""
     : v instanceof Date ? (Number.isNaN(v.getTime()) ? String(v) : v.toISOString())
     : v instanceof Uint8Array ? `\\x${Buffer.from(v).toString("hex")}`
     : typeof v === "object" ? toJson(v)
     : String(v);
+  if (/^\s*[=+\-@]|^[\t\r]/.test(s) && !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 

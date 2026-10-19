@@ -6,6 +6,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { constants } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { removeStudioShare } from "../api/database.js";
 import { appPort, value } from "../shared/env.js";
 import { type LocalDatabase, accepts, startDevDatabase } from "./localdb.js";
 import { migrate } from "./migrate.js";
@@ -45,6 +46,7 @@ export async function dev(args: string[]): Promise<void> {
     child.once("exit", (status, signal) => done(status ?? 128 + (signal ? constants.signals[signal] : 0)));
   });
   for (const signal of SIGNALS) process.off(signal, forward);
+  removeStudioShare(dir); // Open database's tailnet share, should next not have removed it
   const e = eve?.child;
   if (e && e.exitCode === null && e.signalCode === null) await Promise.all([once(e, "exit"), e.kill("SIGTERM")]);
   await local?.stop();
