@@ -83,15 +83,17 @@ input[type="checkbox"] { min-height: auto; width: 16px; height: 16px; padding: 0
 .nav .sub a { padding-left: 24px; }
 /* How many keys are not set here, as on the viewer's Connections tab. */
 .nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: auto; padding: 0 5px; border-radius: 9999px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--failed); background: color-mix(in srgb, var(--failed) 12%, var(--bg)); }
-.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 16px 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .topbar .brand, .drawer .brand { flex-direction: row; align-items: center; gap: 10px; min-height: 0; padding: 0; flex: 1; }
+.topbar .company, .drawer .company { font-size: 16px; }
 .icon { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; border-radius: 6px; }
 .icon svg { fill: none; }
 .drawer { margin: 0; padding: 0; width: min(300px, 85vw); max-width: none; height: 100dvh; max-height: none; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); }
 .drawer::backdrop { background: #0006; }
 .drawer-panel { height: 100%; overflow-y: auto; padding: 0 12px 16px; }
 :root:has(.drawer[open]) { overflow: hidden; }
-.drawer-top { display: flex; align-items: center; gap: 12px; min-height: 56px; padding-left: 4px; margin-bottom: 8px; }
+/* Close sits where the menu button was, so the same tap opens and closes. */
+.drawer-top { display: flex; align-items: center; gap: 8px; min-height: 56px; margin: 0 0 8px -4px; }
 .drawer .nav a { min-height: 40px; font-size: 16px; }
 .main { min-width: 0; display: flex; flex-direction: column; min-height: 100dvh; }
 @media (max-width: 1023px) { .main { min-height: calc(100dvh - 57px); } .main.fill { height: calc(100dvh - 57px); overflow: hidden; } }
