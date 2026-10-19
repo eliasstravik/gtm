@@ -6,8 +6,8 @@ import { isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
 import { BYPASS, carriesBypass } from "../shared/request.js";
 import { listConnections, saveConnection } from "./connections.js";
 import { HttpError, json } from "./http.js";
-import { contextFile, contextList, dataCsv, dataPage, dataTables, shell } from "./read.js";
-import { cronRun, type Registry, runStatus, startRun, workflowsList } from "./runs.js";
+import { contextFile, contextList, dataExport, dataPage, dataTables, shell } from "./read.js";
+import { cronRun, type Registry, runsList, runStatus, startRun, workflowsList } from "./runs.js";
 
 export type { Registry } from "./runs.js";
 
@@ -60,9 +60,10 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
       if (head === "context" && !rest.length) return await contextList();
       if (head === "context" && one === "file") return await contextFile(url.searchParams.get("path"));
       if (head === "workflows" && !rest.length) return await workflowsList(workflows);
+      if (head === "workflows" && one === "runs") return await runsList(workflows, url.searchParams);
       if (head === "data" && !rest.length) return await dataTables();
-      if (head === "data" && one) return await dataPage(one, url.searchParams.get("page"));
-      if (head === "data" && rest.length === 2 && rest[1] === "csv") return await dataCsv(rest[0]);
+      if (head === "data" && one) return await dataPage(one, url.searchParams);
+      if (head === "data" && rest.length === 2) return await dataExport(rest[0], rest[1], url.searchParams);
       throw new HttpError(404, `No such endpoint: /api/gtm/${[head, ...rest].join("/")}`);
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);

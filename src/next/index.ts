@@ -5,9 +5,9 @@ import { pathToFileURL } from "node:url";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 import { allowedHosts } from "../shared/env.js";
-import { artifactSlugs, cronSchedules } from "../shared/scan.js";
+import { cronSchedules } from "../shared/scan.js";
 
-export { artifactSlugs, cronSchedules, RESERVED } from "../shared/scan.js";
+export { cronSchedules } from "../shared/scan.js";
 
 type Phase = string;
 type Context = { defaultConfig: NextConfig };
@@ -22,8 +22,8 @@ function gtmConfig(user: NextConfig, dir: string): NextConfig {
     ...user,
     outputFileTracingIncludes: includes,
     allowedDevOrigins: [...new Set([...(user.allowedDevOrigins ?? []), ...allowedHosts()])],
-    // Read at runtime as the literal `process.env.GTM_CRONS` / `process.env.GTM_ARTIFACTS` (Next inlines them).
-    env: { ...user.env, GTM_CRONS: JSON.stringify(cronSchedules(dir)), GTM_ARTIFACTS: JSON.stringify(artifactSlugs(dir)) },
+    // Read at runtime as the literal `process.env.GTM_CRONS` (Next inlines it).
+    env: { ...user.env, GTM_CRONS: JSON.stringify(cronSchedules(dir)) },
   };
 }
 
@@ -40,7 +40,7 @@ async function loadWithEve(dir: string) {
 
 /**
  * The company's Next.js config: Workflow SDK always, eve when `agent/` exists, plus gtm's file tracing, allowed dev
- * origins (GTM_ALLOWED_HOSTS) and build-time GTM_CRONS / GTM_ARTIFACTS. Everything else in `config` is kept as is.
+ * origins (GTM_ALLOWED_HOSTS) and build-time GTM_CRONS. Everything else in `config` is kept as is.
  * Composed as withEve(withWorkflow(config)), the order spike 1b deployed; the reverse fails eve's types.
  */
 export function withGtm(config: ConfigInput = {}) {

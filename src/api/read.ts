@@ -3,7 +3,6 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
-import { artifactSlugs } from "../shared/scan.js";
 import { HttpError, json, toJson } from "./http.js";
 
 const PAGE_SIZE = 100;
@@ -18,15 +17,13 @@ function heading(markdown: string, h1 = false): string | undefined {
   return body.match(h1 ? /^# +(.+?)(?:\s+#+)?\s*$/m : /^#{1,6} +(.+?)(?:\s+#+)?\s*$/m)?.[1];
 }
 
-/** GET /shell → { company, environment, database, artifacts }. Dev rescans app/ per request; hosted reads GTM_ARTIFACTS. */
+/** GET /shell → { company, environment, database }. */
 export async function shell(): Promise<Response> {
   const company = heading((await read("context/company.md")) ?? "", true) ?? "GTM";
   const url = value("DATABASE_URL");
   // An unparseable URL shows as no database; Data reports the real error.
   const database = url && URL.canParse(url) ? databaseIdentity(url) : null;
-  // process.env.GTM_ARTIFACTS literally, so the value withGtm inlines at build time is the one read.
-  const artifacts: string[] = isHosted() ? JSON.parse(process.env.GTM_ARTIFACTS ?? "[]") : artifactSlugs();
-  return json({ company, environment: environment(), database, artifacts });
+  return json({ company, environment: environment(), database });
 }
 
 /** Repo-relative paths the Context view may show: context/**\/*.md; under "Skills", AGENTS.md and .agents/skills/*\/SKILL.md. */
@@ -110,14 +107,55 @@ async function table(q: Query, name: string): Promise<string> {
   return `"public"."${name.replaceAll('"', '""')}"`;
 }
 
-/** GET /data/<table>?page=<n> (1-based) → { table, columns, rows, page, pageSize: 100, hasMore }. */
-export async function dataPage(name: string, pageParam: string | null): Promise<Response> {
-  const page = pageParam ? Number(pageParam) : 1;
-  if (!Number.isSafeInteger(page) || page < 1) throw new HttpError(400, "page must be a whole number from 1");
+const NUMERIC = new Set([20, 21, 23, 700, 701, 1700]), JSONB = new Set([114, 3802]);
+const typeOf = (oid: number) => (NUMERIC.has(oid) ? "number" : oid === 16 ? "boolean" : JSONB.has(oid) ? "json" : "text");
+const ident = (c: string) => `"${c.replaceAll('"', '""')}"`;
+const OPERATORS: Record<string, string> = { eq: "=", ne: "is distinct from", gt: ">", lt: "<" };
+
+/**
+ * The table's columns, and the `where` / `order by` the query string asks for: `q` matches any value as text, `field`
+ * with `operator` (eq, ne, gt, lt, missing) and `value` filters one column (numbers compare as numbers), `sort` and
+ * `order` sort, and `columns` (comma-separated) picks the columns returned.
+ */
+async function view(q: Query, name: string, p: URLSearchParams) {
+  const t = await table(q, name);
+  const head = await q(`select * from ${t} limit 0`);
+  const fields = head.fields.map((f) => ({ name: f.name, type: typeOf(f.dataTypeID) }));
+  const known = (c: string | null) => (c && fields.some((f) => f.name === c) ? c : null);
+  const values: unknown[] = [], where: string[] = [];
+  const search = p.get("q")?.trim();
+  if (search) where.push(`x::text ilike $${values.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`)}`);
+  const field = known(p.get("field")), op = p.get("operator") ?? "eq";
+  if (field && op === "missing") where.push(`x.${ident(field)} is null`);
+  else if (field && OPERATORS[op] && p.has("value")) {
+    const number = fields.find((f) => f.name === field)!.type === "number" && (op === "gt" || op === "lt");
+    where.push(`x.${ident(field)}${number ? "" : "::text"} ${OPERATORS[op]} $${values.push(p.get("value"))}${number ? "::numeric" : ""}`);
+  }
+  const sort = known(p.get("sort")), order = p.get("order") === "desc" ? "desc" : "asc";
+  const picked = (p.get("columns") ?? "").split(",").filter(known);
+  const columns = picked.length ? picked : fields.map((f) => f.name);
+  // The name column stays on screen while the grid scrolls sideways.
+  const pinned = columns.find((c) => /(^|_)(name|title)$/i.test(c)) ?? null;
+  return {
+    t, fields, columns, pinned, values, select: columns.map((c) => `x.${ident(c)}`).join(", "),
+    where: where.length ? `where ${where.join(" and ")}` : "", order: `order by ${sort ? `x.${ident(sort)} ${order} nulls last, ` : ""}x.ctid`,
+  };
+}
+
+/**
+ * GET /data/<table>?offset=&limit= (plus view()'s filters) → { table, fields, columns, pinned, rows, offset, total }:
+ * up to 200 rows from `offset`, and how many rows match.
+ */
+export async function dataPage(name: string, p: URLSearchParams): Promise<Response> {
+  const offset = Number(p.get("offset") ?? 0), limit = Number(p.get("limit") ?? PAGE_SIZE);
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+    throw new HttpError(400, "offset must be a whole number from 0 and limit from 1 to 200");
+  }
   return json(await readOnly(async (q) => {
-    const r = await q(`select * from ${await table(q, name)} order by ctid limit ${PAGE_SIZE + 1} offset ${(page - 1) * PAGE_SIZE}`);
-    const columns = r.fields.map((f) => f.name);
-    return { table: name, columns, rows: r.rows.slice(0, PAGE_SIZE), page, pageSize: PAGE_SIZE, hasMore: r.rows.length > PAGE_SIZE };
+    const v = await view(q, name, p);
+    const [rows, count] = [await q(`select ${v.select} from ${v.t} x ${v.where} ${v.order} limit ${limit} offset ${offset}`, v.values),
+      await q(`select count(*)::float8 from ${v.t} x ${v.where}`, v.values)];
+    return { table: name, fields: v.fields, columns: v.columns, pinned: v.pinned, rows: rows.rows, offset, total: count.rows[0][0] };
   }));
 }
 
@@ -131,25 +169,31 @@ function csvCell(v: unknown): string {
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
-/** GET /data/<table>/csv → CSV of up to 10,000 rows / 5 MB; when capped, `x-gtm-truncated: 1` and a final `# truncated`. */
-export async function dataCsv(name: string): Promise<Response> {
-  const { body, truncated } = await readOnly(async (q) => {
-    const t = await table(q, name);
-    const lines: string[] = [];
+/**
+ * GET /data/<table>/csv or /json (with view()'s filters, sort and columns) → up to 10,000 rows / 5 MB as a download; when
+ * capped, `x-gtm-truncated: 1` and, in CSV, a final `# truncated`.
+ */
+export async function dataExport(name: string, format: string, p: URLSearchParams): Promise<Response> {
+  if (format !== "csv" && format !== "json") throw new HttpError(404, `No export format "${format}"`);
+  const line = format === "csv" ? (row: unknown[]) => row.map(csvCell).join(",") : (row: unknown[], cols: string[]) =>
+    toJson(Object.fromEntries(cols.map((c, i) => [c, row[i]])));
+  const { lines, truncated } = await readOnly(async (q) => {
+    const v = await view(q, name, p);
+    const lines: string[] = format === "csv" ? [v.columns.map(csvCell).join(",")] : [];
     let bytes = 0;
     // Chunks of 1,000 keep memory near the cap; past 10,000 rows or 5 MB (less room for the notice) it stops.
     for (let offset = 0; ; offset += 1000) {
-      const r = await q(`select * from ${t} order by ctid limit 1000 offset ${offset}`);
-      if (offset === 0) lines.push(r.fields.map((f) => csvCell(f.name)).join(","));
-      for (const line of r.rows.map((row) => row.map(csvCell).join(","))) {
-        bytes += Buffer.byteLength(line) + 1;
-        if (lines.length > CSV_ROWS || bytes > CSV_BYTES - 64) return { body: `${lines.join("\n")}\n# truncated\n`, truncated: true };
-        lines.push(line);
+      const r = await q(`select ${v.select} from ${v.t} x ${v.where} ${v.order} limit 1000 offset ${offset}`, v.values);
+      for (const text of r.rows.map((row) => line(row, v.columns))) {
+        bytes += Buffer.byteLength(text) + 2;
+        if (lines.length > CSV_ROWS || bytes > CSV_BYTES - 64) return { lines, truncated: true };
+        lines.push(text);
       }
-      if (r.rows.length < 1000) return { body: `${lines.join("\n")}\n`, truncated: false };
+      if (r.rows.length < 1000) return { lines, truncated: false };
     }
   });
-  const headers = { "content-type": "text/csv; charset=utf-8", "cache-control": "no-store",
-    "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}.csv"`, ...(truncated && { "x-gtm-truncated": "1" }) };
+  const body = format === "csv" ? `${lines.join("\n")}\n${truncated ? "# truncated\n" : ""}` : `[${lines.join(",\n")}]\n`;
+  const headers = { "content-type": format === "csv" ? "text/csv; charset=utf-8" : "application/json", "cache-control": "no-store",
+    "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}.${format}"`, ...(truncated && { "x-gtm-truncated": "1" }) };
   return new Response(body, { headers });
 }

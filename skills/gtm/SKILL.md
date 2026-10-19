@@ -25,7 +25,7 @@ The coding agent edits the repo and does account steps with vendor CLIs; the per
 ## Procedure
 
 1. With no gtm project here, run `npx @eliasstravik/gtm init <dir>`, using `.` when this folder holds only `.git`, `.agents/`, `.claude/`, `AGENTS.md` or `CLAUDE.md`.
-2. Otherwise read `AGENTS.md`, then the topic in `node_modules/@eliasstravik/gtm/docs/` (or `npx @eliasstravik/gtm docs <topic>`) before changing layout, workflows, data, connections, artifacts, deploy, webhooks or Slack.
+2. Otherwise read `AGENTS.md`, then the topic in `node_modules/@eliasstravik/gtm/docs/` (or `npx @eliasstravik/gtm docs <topic>`) before changing layout, workflows, data, connections, deploy, webhooks or Slack.
 3. Never rely on this file for details; the installed docs match the installed version.
 
 ## Outputs

@@ -18,7 +18,6 @@ except the managed block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm 
 | `app/[[...path]]/page.tsx` | the built-in views |
 | `app/api/gtm/[...path]/route.ts` | `gtm({ workflows })`: cockpit reads, start, runs, cron, Connections save |
 | `app/api/hooks/<sender>/route.ts` | inbound webhooks (webhooks.md) |
-| `app/<slug>/page.tsx` | artifacts (agent-made pages), listed under "Artifacts" (artifacts.md) |
 | `.agents/skills/` | the company's own project skills, one `<name>/SKILL.md` each |
 | `.claude/skills` | symlink to `../.agents/skills`; how Claude Code sees the company's skills |
 | `agent/` | optional Slack agent, added by `npx @eliasstravik/gtm init --slack` (slack.md) |
