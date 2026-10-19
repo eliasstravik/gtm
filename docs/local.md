@@ -60,4 +60,6 @@ listens on 127.0.0.1 only; `tailscale serve --bg --https=<port> http://127.0.0.1
 
 **Warning: anyone on that private network gets in without a login**: they read Context and Data and can Save
 keys into `.env.local`. Start and runs never answer on those hosts, so nobody else can run stages on the
-owner's subscription; run workflows on this machine with `npx @eliasstravik/gtm run`.
+owner's subscription; run workflows on this machine with `npx @eliasstravik/gtm run`. The run inspector
+(`/api/gtm/inspector`) shows runs there but refuses replay, cancel and every other change, and the Workflow
+SDK's own routes (`/.well-known/workflow/*`) answer 404: only this server's queue calls them, on 127.0.0.1.

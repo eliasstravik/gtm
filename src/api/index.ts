@@ -57,7 +57,7 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
         if (req.method === "POST") return await saveConnection(req);
         if (get) return await listConnections(req);
       }
-      if (head === "inspector") return await inspector(req, rest);
+      if (head === "inspector") return await inspector(req, localCaller(req));
       if (head === "database") return await database(req, rest);
       if (!get) throw new HttpError(405, "The Console is read-only");
       if (head === "shell" && !rest.length) return await shell();
