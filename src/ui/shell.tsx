@@ -78,6 +78,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const close = () => menu.current?.close();
   return (
     <div className="app">
+      {/* React hoists it into <head>: links out of the Console (Vercel, GitHub, Neon, Studio) never carry its URL. */}
+      <meta name="referrer" content="no-referrer" />
       <aside className="sidebar">{brand}{nav}</aside>
       <header className="topbar">{button("Open menu", "M3 6h14M3 10h14M3 14h14", open)}{brand}</header>
       {/* Clicks on the backdrop land on the dialog itself; the panel inside it catches the rest. */}
