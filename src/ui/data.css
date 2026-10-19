@@ -1,0 +1,55 @@
+/* Data: a grid over the whole table, its name column pinned, rows read as they scroll into view. */
+.data-grid { table-layout: fixed; width: max-content; min-width: 100%; }
+.data-grid th, .data-grid td { position: relative; height: 36px; padding: 6px 10px; border-right: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-grid th { position: sticky; }
+.data-grid tbody th { top: auto; }
+.data-grid .row-number, .data-grid .pinned { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+.data-grid .row-number { width: 56px; color: var(--muted); text-align: right; box-shadow: -24px 0 0 var(--bg); }
+.data-grid .pinned { left: 56px; box-shadow: inset -1px 0 0 var(--border); }
+.data-grid thead .row-number, .data-grid thead .pinned { z-index: 2; background: var(--surface); }
+.data-grid th button { width: 100%; min-height: 24px; padding: 0; border: 0; background: transparent; color: inherit; font-weight: 500; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.data-pane .table-scroll { padding-inline: 24px; }
+.data-pane .table-scroll > .notice { position: sticky; left: 0; }
+.data-grid .spacer td { height: auto; padding: 0; border: 0; }
+.data-grid td:hover { background: var(--surface); }
+.data-grid td:focus, .data-grid td[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface); }
+.cell-link { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+.cell-link:hover { text-decoration-color: currentColor; }
+.resize-handle { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 2; width: 8px; cursor: col-resize; touch-action: none; }
+.grid-message { min-height: 24px; margin: 0; padding: 2px 24px; font-size: 12px; color: var(--muted); }
+.value-dialog { width: 640px; }
+.value-dialog .value { max-height: 60vh; margin-top: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.structured-value summary { cursor: pointer; }
+.structured-value[open] { max-height: 360px; overflow: auto; white-space: normal; }
+.structured-value ol { margin: 8px 0; padding-left: 20px; }
+.structured-value li { margin: 8px 0; }
+.structured-value dt { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.structured-value dd { margin-left: 0; overflow-wrap: anywhere; }
+.columns-trigger { display: inline-flex; align-items: center; gap: 8px; }
+.columns-trigger[aria-expanded="true"] { background: var(--hover); }
+.columns-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.columns-popover {
+  position: fixed; inset: var(--columns-top, 0) auto auto var(--columns-left, 0); margin: 0; padding: 0; width: min(304px, calc(100vw - 24px));
+  max-height: min(420px, calc(100dvh - 24px)); border: 0; border-radius: 10px; color: var(--text); background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border), 0 12px 32px #0003; overflow: hidden;
+}
+.columns-popover:popover-open { display: flex; flex-direction: column; }
+.columns-heading { padding: 14px 14px 10px; }
+.columns-description { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.columns-search { padding: 0 10px 10px; }
+.columns-search input { width: 100%; background: var(--surface); }
+.columns-options { overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px; border-top: 1px solid var(--border); }
+.columns-option { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+.columns-option:hover { background: var(--hover); }
+.columns-option span { overflow-wrap: anywhere; }
+.columns-option input { width: 15px; height: 15px; min-height: 0; margin: 0; padding: 0; flex-shrink: 0; accent-color: var(--text); cursor: pointer; }
+.columns-option:has(:disabled) { color: var(--muted); cursor: default; }
+.columns-empty { padding: 24px 8px; color: var(--muted); text-align: center; }
+.columns-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; padding: 10px; border-top: 1px solid var(--border); }
+.columns-reset { border-color: transparent; color: var(--muted); }
+
+@media (max-width: 640px) {
+  .data-pane .table-scroll { padding-inline: 12px; }
+  .data-pane .toolbar input[type="search"] { min-width: 160px; }
+  .columns-option { min-height: 40px; }
+}

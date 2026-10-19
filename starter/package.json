@@ -1,0 +1,28 @@
+{
+  "name": "company-gtm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "gtm dev",
+    "build": "gtm migrate && next build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "gtm migrate"
+  },
+  "dependencies": {
+    "@ai-sdk/workflow": "2.0.75",
+    "@eliasstravik/gtm": "^0.0.1",
+    "ai": "7.0.143",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "workflow": "5.2.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "drizzle-kit": "0.31.11",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,90 @@
+"use client";
+import type { CSSProperties, MouseEvent } from "react";
+import { Link, Status, useApi, useQuery } from "./load.js";
+import { Markdown } from "./markdown.js";
+import "./context.css";
+
+type File = { path: string; title: string };
+type Group = { name: string; files: File[] };
+type Item = { key: string; label: string; depth: number; file?: File };
+
+/** Tree rows: each folder once, files indented under it (paths arrive sorted). Skills are labelled by their folder. */
+function tree(group: Group): Item[] {
+  const out: Item[] = [];
+  let prev: string[] = [];
+  for (const file of group.files) {
+    const parts = file.path.split("/");
+    if (group.name === "Skills") { out.push({ key: file.path, label: parts.at(-2) ?? file.path, depth: 0, file }); continue; }
+    const dirs = parts.slice(1, -1); // under context/
+    let i = 0;
+    while (i < dirs.length && dirs[i] === prev[i]) i += 1;
+    for (; i < dirs.length; i += 1) out.push({ key: `${dirs.slice(0, i + 1).join("/")}/`, label: `${dirs[i]}/`, depth: i });
+    out.push({ key: file.path, label: parts.at(-1)!, depth: dirs.length, file });
+    prev = dirs;
+  }
+  return out;
+}
+
+/** Context: the company's context files and skills as a tree (a picker on phones); the selected one (`?file=`) rendered read-only. */
+export function ContextView() {
+  const { params, href, go } = useQuery();
+  const list = useApi<{ groups: Group[] }>("context");
+  const groups = list.data?.groups ?? [];
+  const path = params.get("file") ?? groups.find((g) => g.files.length)?.files[0].path ?? null;
+  const doc = useApi<{ path: string; markdown: string; githubUrl: string | null }>(path && `context/file?path=${encodeURIComponent(path)}`);
+  // A relative link to another listed file (e.g. `icps/enterprise.md`) opens it here instead of leaving the Console.
+  const follow = (e: MouseEvent) => {
+    const link = (e.target as Element).closest("a")?.getAttribute("href");
+    if (!link || !path || e.metaKey || e.ctrlKey || e.shiftKey || /^([a-z][a-z0-9+.-]*:|\/|#)/i.test(link)) return;
+    const target = decodeURIComponent(new URL(link, `http://x/${path}`).pathname.slice(1));
+    if (!groups.some((g) => g.files.some((f) => f.path === target))) return;
+    e.preventDefault();
+    go({ file: target });
+    scrollTo({ top: 0 });
+  };
+  const trees = groups.map((g) => ({ ...g, items: tree(g) }));
+  return (
+    <>
+      <div className="title-row"><h1>Context</h1></div>
+      {!list.data ? <Status state={list} /> : (
+        <div className="context">
+          <nav className="file-tree" aria-label="Context files">
+            {trees.map((g) => (
+              <section key={g.name}>
+                <h2>{g.name}</h2>
+                {!g.files.length && <p className="dir">None yet</p>}
+                <ul>
+                  {g.items.map((it) => (
+                    <li key={it.key} style={{ "--depth": it.depth } as CSSProperties}>
+                      {it.file ? (
+                        <Link href={href({ file: it.file.path })} title={it.file.title} aria-current={it.file.path === path ? "page" : undefined}>{it.label}</Link>
+                      ) : <span className="dir">{it.label}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </nav>
+          <article className="doc" onClick={follow}>
+            {path && (
+              <select className="file-pick" name="file" aria-label="File" value={path} onChange={(e) => go({ file: e.target.value })}>
+                {trees.map((g) => g.files.length > 0 && (
+                  <optgroup key={g.name} label={g.name}>
+                    {g.items.flatMap((it) => it.file ? [<option key={it.key} value={it.file.path}>{g.name === "Skills" ? it.label : it.file.path.slice(8)}</option>] : [])}
+                  </optgroup>
+                ))}
+              </select>
+            )}
+            {!path ? <p className="notice">No context yet. Your agent writes it as Markdown files under context/.</p> : !doc.data ? <Status state={doc} /> : <>
+              <div className="doc-head">
+                <span className="mono">{doc.data.path}</span>
+                {doc.data.githubUrl && <a href={doc.data.githubUrl} target="_blank" rel="noreferrer">Open on GitHub ↗</a>}
+              </div>
+              <Markdown source={doc.data.markdown} />
+            </>}
+          </article>
+        </div>
+      )}
+    </>
+  );
+}
