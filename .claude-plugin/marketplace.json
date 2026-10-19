@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "eliasstravik",
+  "description": "Elias Stråvik's plugins: gtm, a company's go-to-market work as an ordinary Next.js project.",
+  "owner": {
+    "name": "Elias Stråvik",
+    "url": "https://github.com/eliasstravik"
+  },
+  "plugins": [
+    {
+      "name": "gtm",
+      "source": "./",
+      "description": "Set up and run a company's go-to-market work as an ordinary Next.js project on Vercel, with one cockpit for the team."
+    }
+  ]
+}

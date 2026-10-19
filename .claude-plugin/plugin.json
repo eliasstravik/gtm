@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "gtm",
+  "version": "0.0.1",
+  "description": "Set up and run a company's go-to-market work as an ordinary Next.js project on Vercel, with one cockpit for the team.",
+  "author": { "name": "Elias Stråvik" },
+  "homepage": "https://github.com/eliasstravik/gtm",
+  "repository": "https://github.com/eliasstravik/gtm",
+  "license": "MIT",
+  "keywords": ["gtm", "go-to-market", "nextjs", "vercel", "workflows"]
+}

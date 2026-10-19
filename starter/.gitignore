@@ -1,0 +1,10 @@
+.env*.local
+.gtm/
+.workflow-data/
+.vercel/
+.next/
+node_modules/
+.swc/
+.eve/
+.output/
+next-env.d.ts

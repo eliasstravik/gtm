@@ -5,7 +5,7 @@
 export type Env = Record<string, string | undefined>;
 
 /** What `vercel env pull` writes for a Secret value it cannot read. It counts as missing everywhere. */
-export const PULL_PLACEHOLDER = "<pending spike 1c>";
+export const PULL_PLACEHOLDER = "[SENSITIVE]";
 
 /** A variable's value, or undefined when it is unset, empty or Vercel's pull placeholder. */
 export function value(name: string, env: Env = process.env): string | undefined {
