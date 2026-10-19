@@ -1,5 +1,6 @@
 "use client";
 import NextLink from "next/link.js";
+import { usePathname, useRouter, useSearchParams } from "next/navigation.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** next/link is CommonJS: under NodeNext its default import is typed as the module, but bundlers hand over the component. */
@@ -92,4 +93,32 @@ export function Status({ state }: { state: { loading: boolean; error?: string; d
       {state.error} <button type="button" onClick={state.reload}>Retry</button>
     </p>
   );
+}
+
+/**
+ * The query string as state: `params` now, `href(changes)` for a link that changes some of it (undefined removes a
+ * name), and `go(changes, replace)` to navigate there without scrolling to the top.
+ */
+export function useQuery() {
+  const params = useSearchParams(), pathname = usePathname(), router = useRouter();
+  const href = (changes: Record<string, string | undefined>, path = pathname) => {
+    const p = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(changes)) v === undefined ? p.delete(k) : p.set(k, v);
+    return p.size ? `${path}?${p}` : path;
+  };
+  const go = (changes: Record<string, string | undefined>, replace = false) =>
+    (replace ? router.replace : router.push)(href(changes), { scroll: false });
+  return { params, href, go };
+}
+
+/** A search field that reports its text a quarter second after typing stops. */
+export function Search({ value, onChange, label = "Search" }: { value: string; onChange: (value: string) => void; label?: string }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  useEffect(() => {
+    if (text === value) return;
+    const timer = setTimeout(() => onChange(text), 250);
+    return () => clearTimeout(timer);
+  }, [text, value, onChange]);
+  return <input type="search" name="search" aria-label={label} placeholder={label} value={text} onChange={(e) => setText(e.target.value)} />;
 }

@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
+import { exampleConnections } from "./connections.js";
 import { HttpError, json, toJson } from "./http.js";
 
 const PAGE_SIZE = 100;
@@ -17,13 +18,17 @@ function heading(markdown: string, h1 = false): string | undefined {
   return body.match(h1 ? /^# +(.+?)(?:\s+#+)?\s*$/m : /^#{1,6} +(.+?)(?:\s+#+)?\s*$/m)?.[1];
 }
 
-/** GET /shell → { company, environment, database }. */
+/**
+ * GET /shell → { company, environment, database, deployment, connectionsMissing }: `deployment` changes with every
+ * deploy (so open pages reload for new code), `connectionsMissing` counts `.env.example` names not set here.
+ */
 export async function shell(): Promise<Response> {
   const company = heading((await read("context/company.md")) ?? "", true) ?? "GTM";
   const url = value("DATABASE_URL");
   // An unparseable URL shows as no database; Data reports the real error.
   const database = url && URL.canParse(url) ? databaseIdentity(url) : null;
-  return json({ company, environment: environment(), database });
+  const connectionsMissing = exampleConnections().filter((c) => value(c.name) === undefined).length;
+  return json({ company, environment: environment(), database, deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null, connectionsMissing });
 }
 
 /** Repo-relative paths the Context view may show: context/**\/*.md; under "Skills", AGENTS.md and .agents/skills/*\/SKILL.md. */

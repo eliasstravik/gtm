@@ -1,0 +1,34 @@
+/* Context: the files as a tree beside the selected one, rendered read-only. */
+.context { display: grid; grid-template-columns: 240px minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+.file-tree { padding: 12px 12px 40px; border-right: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.file-tree h2 { margin: 16px 8px 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.file-tree h2:first-child { margin-top: 4px; }
+.file-tree ul { list-style: none; margin: 0; padding: 0; }
+.file-tree a, .file-tree .dir { display: block; padding: 4px 8px 4px calc(8px + var(--depth, 0) * 14px); border-radius: 6px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-tree a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.file-tree a[aria-current] { background: var(--hover); color: var(--text); }
+.file-tree .dir { opacity: 0.8; }
+.doc { min-width: 0; padding: 20px 32px 48px; }
+.doc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 20px; color: var(--muted); font-size: 13px; }
+.md { max-width: 72ch; font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; text-wrap: pretty; }
+.md > :first-child { margin-top: 0; }
+.md h1 { font-size: 24px; line-height: 1.3; letter-spacing: -0.01em; margin: 0 0 16px; }
+.md h2 { font-size: 18px; line-height: 1.4; margin: 32px 0 8px; }
+.md h3 { font-size: 15px; margin: 24px 0 6px; }
+.md :is(p, ul, ol, pre, blockquote, table) { margin: 0 0 16px; }
+.md :is(ul, ol) { padding-left: 1.4em; }
+.md a { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+.md code { padding: 0.1em 0.35em; border-radius: 4px; background: var(--hover); }
+.md pre { padding: 12px 14px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); overflow-x: auto; line-height: 1.5; }
+.md pre code { padding: 0; background: none; }
+.md blockquote { margin-left: 0; padding-left: 14px; border-left: 2px solid var(--border); color: var(--muted); }
+.md table { display: block; overflow-x: auto; width: auto; }
+.md :is(th, td) { position: static; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.md img { max-width: 100%; }
+
+@media (max-width: 767px) {
+  .context { grid-template-columns: minmax(0, 1fr); }
+  .file-tree { border-right: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  .doc { padding: 20px 16px 48px; }
+}

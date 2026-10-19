@@ -52,17 +52,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc -p tsconfig.json && cp src/ui/*.css dist/ui/ && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && node --test test/slack/*.test.mjs",
     "test": "node --test test/slack/*.test.mjs && node --test test/acceptance.test.mjs",
-    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1"
+    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1 && cat src/ui/*.css | wc -l"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.82",
     "@ai-sdk/openai": "4.0.96",
     "@electric-sql/pglite": "~0.5.10",
     "@electric-sql/pglite-socket": "0.2.13",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "@next/env": "^16.4.2",
     "@vercel/oidc": "4.0.1",
     "marked": "18.1.1",

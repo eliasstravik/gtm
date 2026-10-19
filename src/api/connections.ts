@@ -218,3 +218,8 @@ export async function saveConnection(req: Request): Promise<Response> {
     return reply({ ok: false, error: "Save failed." }, 500);
   }
 }
+
+/** GET /api/gtm/release?id=<deployment id> → { state: "updating" | "live" | "failed", details? }. (Stub: owned by the Connections helper.) */
+export async function releaseStatus(_params: URLSearchParams): Promise<Response> {
+  return reply({ release: null });
+}

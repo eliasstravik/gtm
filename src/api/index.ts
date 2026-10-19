@@ -4,7 +4,7 @@
  */
 import { isHosted, LOOPBACK_HOSTS, safeEqual, value } from "../shared/env.js";
 import { BYPASS, carriesBypass } from "../shared/request.js";
-import { listConnections, saveConnection } from "./connections.js";
+import { listConnections, releaseStatus, saveConnection } from "./connections.js";
 import { HttpError, json } from "./http.js";
 import { contextFile, contextList, dataExport, dataPage, dataTables, shell } from "./read.js";
 import { cronRun, type Registry, runsList, runStatus, startRun, workflowsList } from "./runs.js";
@@ -57,6 +57,7 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
       }
       if (!get) throw new HttpError(405, "The cockpit is read-only");
       if (head === "shell" && !rest.length) return await shell();
+      if (head === "release" && !rest.length) return await releaseStatus(url.searchParams);
       if (head === "context" && !rest.length) return await contextList();
       if (head === "context" && one === "file") return await contextFile(url.searchParams.get("path"));
       if (head === "workflows" && !rest.length) return await workflowsList(workflows);
