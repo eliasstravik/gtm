@@ -19,7 +19,7 @@ const FILL = /^\/(runs|data|workflows\/[^/]+)$/;
 
 /**
  * The Console's frame: a sidebar with the company, the environment and the sections; below 1024px a top bar whose
- * menu button opens the same sections in a modal <dialog>.
+ * menu button opens the same sections in a modal <dialog>. The button leads, on the side the panel slides in from.
  */
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -79,11 +79,11 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="app">
       <aside className="sidebar">{brand}{nav}</aside>
-      <header className="topbar">{brand}{button("Open menu", "M3 6h14M3 10h14M3 14h14", open)}</header>
+      <header className="topbar">{button("Open menu", "M3 6h14M3 10h14M3 14h14", open)}{brand}</header>
       {/* Clicks on the backdrop land on the dialog itself; the panel inside it catches the rest. */}
       <dialog ref={menu} className="drawer" aria-label="Menu" onClick={(e) => (e.target === e.currentTarget || (e.target as Element).closest("a")) && close()}>
         <div className="drawer-panel">
-          <div className="drawer-top">{brand}{button("Close menu", "M5 5l10 10M15 5L5 15", close)}</div>
+          <div className="drawer-top">{button("Close menu", "M5 5l10 10M15 5L5 15", close)}{brand}</div>
           {nav}
         </div>
       </dialog>
