@@ -54,8 +54,9 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1",
-    "test": "node --test test/slack/*.test.mjs && node --test test/acceptance.test.mjs"
+    "check": "npm run typecheck && node --test test/slack/*.test.mjs",
+    "test": "node --test test/slack/*.test.mjs && node --test test/acceptance.test.mjs",
+    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.82",
