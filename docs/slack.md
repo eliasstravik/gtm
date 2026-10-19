@@ -49,8 +49,10 @@ Only full members of the company's Slack. Every eve entry hook (`onAppMention`, 
 
 - The start-run and commit/push tools carry eve's `approval` policy, and `onInputResponse` accepts only the
   person who asked. The yes is enforced by code, not by the model reading thread text.
-- Repo edits go through eve's git extension with GitHub via Vercel Connect (a person creates and installs
-  the Connect GitHub app); after the yes the agent commits and pushes to `main`, and Vercel redeploys.
+- Repo edits go through eve's git tooling with GitHub via Vercel Connect: a connector named `gtm` (uid
+  `github/gtm`, which `agent/tools/github.ts` names), made with `vercel connect create github --name gtm` in the
+  linked project; a person finishes it in the browser and installs its GitHub app on the project's own repo
+  (Contents: read & write). After the yes the agent commits and pushes to `main`, and Vercel redeploys.
 - The start-run tool calls `POST /api/gtm/start/<workflow>` with the automation bypass header, so the run
   lives in the app and shows in the cockpit (an in-process start would run in eve's own service and not
   show). The tool reads `VERCEL_AUTOMATION_BYPASS_SECRET` and `VERCEL_PROJECT_PRODUCTION_URL` from the deployment.
