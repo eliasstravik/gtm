@@ -44,7 +44,7 @@ Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/` (local ru
 - Shell: the company name is the first `# ` heading of `context/company.md` (else "GTM"); the badge shows the
   environment (Local, Preview, Production) and the database identity. Menu: Context, Workflows, Data,
   Connections, then "Pages".
-- Context: `AGENTS.md`, then every `context/**/*.md` sorted by path; under "Skills", every
+- Context: every `context/**/*.md` sorted by path; under "Skills", `AGENTS.md` and every
   `.agents/skills/*/SKILL.md`. Read-only; hosted, each file links to GitHub. Only `.md` files show.
 - Workflows: the names in `workflows/index.ts`, the schedules in `vercel.json`, and recent runs from the
   Workflow SDK's own run store. It never touches the database.

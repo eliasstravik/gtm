@@ -23,6 +23,9 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: Slack agent tests (fake Slack, eve's own eval runner)
+        run: node --test test/slack/*.test.mjs
+
       - name: Pack
         run: |
           mkdir -p /tmp/gtm-ci

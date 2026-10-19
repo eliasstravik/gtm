@@ -8,3 +8,4 @@ node_modules/
 .eve/
 .output/
 next-env.d.ts
+*.tsbuildinfo

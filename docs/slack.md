@@ -5,7 +5,9 @@ The optional Slack agent is an ordinary eve agent in `agent/`, deployed in the s
 ## What `init --slack` adds
 
 `npx @eliasstravik/gtm init --slack` adds only files and the `eve` dependency: `agent/agent.ts`,
-`agent/instructions.md`, `agent/channels/slack.ts`, `agent/channels/eve.ts` and `agent/skills` (a symlink to
+`agent/instructions.md`, `agent/channels/slack.ts`, `agent/channels/eve.ts` (deny-all), `agent/lib/` (the member
+allowlist, the requester-only approval policy, calls to the app's API), `agent/tools/` (`start_run`, `get_run`,
+`github`), `agent/sandbox.ts` and `agent/skills` (a symlink to
 `../.agents/skills`, which eve follows, so the agent has the company's skills). eve loads every entry there
 as a skill, so `--slack` deletes `.agents/skills/.gitkeep`, and nothing but skills may go in that folder; a
 missing (not yet created) folder is fine. `withGtm` applies `withEve`
@@ -28,7 +30,9 @@ which is never allowed):
   Save refuses `SLACK_*`).
 - Slack's Event Subscriptions and Interactivity Request URLs carry Slack's own labeled bypass secret:
   `https://<production domain>/eve/v1/slack?x-vercel-protection-bypass=<Slack's secret>`. Never the one
-  deployments see as `VERCEL_AUTOMATION_BYPASS_SECRET`; the proxy refuses that value on `/eve/v1/slack`.
+  deployments see as `VERCEL_AUTOMATION_BYPASS_SECRET`. On Vercel, `/eve/v1/*` goes to eve's own service before
+  Next.js, so `proxy.ts` never sees it: Slack's signature check and eve's channel auth are its only guards
+  (locally the proxy's loopback rule applies too).
 
 ## Who can command it
 

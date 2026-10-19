@@ -5,9 +5,13 @@ account step with the vendors' own CLIs and dashboards. Our conventions:
 
 1. **Vercel Pro.** Workflow run state is kept 7 days on Pro and 1 day on Hobby, so production needs Pro.
 2. **Neon through the Vercel Marketplace**: production's branch on Production, preview branching (or no
-   database) on Preview, a dev branch on Development. Never production's database on Development.
-3. **Vercel Authentication on All Deployments** (`ssoProtection.deploymentType` `"all"`). The default Standard
-   Protection (`"all_except_custom_domains"`) leaves production public. With All Deployments on, an
+   database) on Preview, a dev branch on Development. Never production's database on Development:
+   `vercel integration add neon --name <name> -e production --no-env-pull` connects Production only (the
+   command's default connects every environment). Its variables arrive as Config, not Secret. It also writes
+   Neon's own skills into `.agents/skills/` and a `skills-lock.json`; keep or delete them like any skill.
+3. **Vercel Authentication on All Deployments** (`ssoProtection.deploymentType` `"all"`). Every other value
+   (Standard, `"prod_deployment_urls_and_all_previews"`, and new projects' default `"all_except_custom_domains"`)
+   leaves the production domain public. With All Deployments on, an
    unauthenticated request gets a 302 to `vercel.com/sso-api`. Until then every page and endpoint answers
    "Turn on Vercel Authentication → All Deployments" instead of content (checked per host, cached 5 minutes).
 4. **"Automatically expose System Environment Variables" on.** gtm knows it is hosted from `VERCEL_ENV` plus
@@ -25,8 +29,8 @@ account step with the vendors' own CLIs and dashboards. Our conventions:
    deployments built after it exists see it; redeploy once.
 10. **One separate, labeled bypass secret per outside caller** (Slack, each webhook sender), never the one
     above, so each can be revoked alone (webhooks.md, slack.md).
-11. **`GTM_VERCEL_TOKEN`**: created in the Vercel dashboard by the person setting up, scoped to this project
-    only, with an expiry; saved as a Production Secret; never passed into the eve sandbox. Its expiry date goes
+11. **`GTM_VERCEL_TOKEN`**: created by the person setting up, scoped to this project only, with an expiry (in
+    the dashboard, or `POST /v3/user/tokens` with `projectId` and `expiresAt` using their own CLI login); saved as a Production Secret; never passed into the eve sandbox. Its expiry date goes
     in `GTM_VERCEL_TOKEN_EXPIRES` (ISO date) as a Production Config variable. Connections' hosted Save uses it
     (connections.md).
 12. **`npx @eliasstravik/gtm check --prod`** before calling it live: an unauthenticated request to production
@@ -35,6 +39,8 @@ account step with the vendors' own CLIs and dashboards. Our conventions:
 
 ## Notes
 
+- A `vercel deploy` from a laptop uploads what `.vercelignore` does not exclude; the starter's excludes
+  `.env*.local`, `.gtm/` (local data) and the build caches. Git deploys follow `.gitignore`.
 - `npm run build` is `gtm migrate && next build`, so every production deploy applies pending migrations first
   (data.md).
 - Teammates add keys on the production domain (`VERCEL_PROJECT_PRODUCTION_URL`), the only place Save works.

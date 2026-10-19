@@ -47,7 +47,8 @@ npx @eliasstravik/gtm run <workflow> [--input '<json>'] [--prod] [--no-wait]
 
 Keep each run under ~2,000 events (the Workflow SDK caps a run at 25,000 and replay slows past ~2,000): about
 20 rows per run when each row calls `agent()` with tools through AI Gateway (a measured one-row tool stage
-made ~120 events), about 100 rows when rows are plain steps. Fan larger lists out into child runs of that size.
+made ~120 events; a measured tool-less `agent()` row makes ~6), about 100 rows when rows are plain steps. Fan
+larger lists out into child runs of that size.
 
 ## Scope rules
 
@@ -55,4 +56,5 @@ made ~120 events), about 100 rows when rows are plain steps. Fan larger lists ou
   a module that reaches `db()` pulls `pg` into the workflow bundle and the build fails.
 - `agent()` (`@eliasstravik/gtm/ai`) only in workflow scope, never inside a `"use step"` body; it makes its own
   steps. Options: `name`, `instructions`, `prompt`, `schema`, `model?`, `reasoning?`, `tools?` (`mcp`, `web`,
-  `custom`), `maxSteps?`, `timeout?`. It returns `{ value, costUsd, modelCalls, toolCalls, usage }`. Backends and models: local.md.
+  `custom`), `maxSteps?`, `timeout?`. It returns `{ value, costUsd, modelCalls, toolCalls, usage }`;
+  on the `claude`/`codex` CLI path `toolCalls` is always `[]` (the CLI runs its own tool loop). Backends and models: local.md.

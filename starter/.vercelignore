@@ -1,0 +1,8 @@
+.env*.local
+.gtm/
+.workflow-data/
+.swc/
+.eve/
+.output/
+.next/
+node_modules/

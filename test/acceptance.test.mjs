@@ -11,7 +11,8 @@
  * 7.1 → 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.7 → 7.6 (`init --slack` adds eve, so it goes last).
  *
  * Every command runs with an empty environment except PATH and HOME (needed to run anything at all) and the
- * harness's NEXT_TELEMETRY_DISABLED=1, plus the variables a check sets on purpose (GTM_PORT, the test-only
+ * harness's NEXT_TELEMETRY_DISABLED=1 (and eve's EVE_TELEMETRY_DISABLED=1, which `eve dev`/`eve build` honour), plus
+ * the variables a check sets on purpose (GTM_PORT, the test-only
  * GTM_PACKAGE_SPEC=file:<tarball> that points the starter's dependency at the tarball, …).
  * Network: §7 runs this inside a sandbox that allows only the npm registry. CI does that with a firewall on the
  * test user (.github/workflows/ci.yml). A local run cannot sandbox: it reaches whatever the package reaches.
@@ -21,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import {
-  MIN, assertOk, cleanEnv, diffSnapshots, extractCli, httpsStub, listeningSockets, makeWorkDir, packPackage, poll,
+  MIN, assertOk, cleanEnv, diffSnapshots, extractCli, httpsStub, killInside, listeningSockets, makeWorkDir, packPackage, poll,
   portOpen, processTree, request, run, setLogDir, snapshot, sql, startProcess, stopAll, tail, waitForHttp, within,
 } from "./helpers.mjs";
 
@@ -46,7 +47,11 @@ const npm = (args, { env = {}, timeout = 20 * MIN } = {}) =>
 const init = (args = []) => run("node", [s.cli, "init", s.dir, ...args], {
   cwd: s.work, env: cleanEnv({ GTM_PACKAGE_SPEC: `file:${s.tarball}` }), timeout: 20 * MIN, name: `gtm-init${args.join("")}`,
 });
-const get = (pathname, opts) => request(PORT, pathname, opts);
+const get = (pathname, opts) => request(PORT, pathname, opts).catch((error) => {
+  // Name the real cause when gtm dev is gone (a crash, or something outside the harness killing it).
+  if (s.dev?.exitCode !== undefined) error.message += ` (gtm dev exited ${s.dev.exitCode}; log ${s.dev.log})`;
+  throw error;
+});
 const ready = () => Boolean(s.dir) && exists("node_modules/.bin/gtm");
 const BLOCK = /<!-- BEGIN:gtm -->[\s\S]*?<!-- END:gtm -->/;
 
@@ -116,7 +121,10 @@ before(async () => {
 
 after(async () => {
   await stopAll();
-  if (process.env.GTM_TEST_KEEP === "1" || !s.work) return;
+  if (!s.work) return;
+  const strays = killInside(s.work);
+  if (strays.length) console.error(`# killed ${strays.length} process(es) still running in ${s.work}:\n# ${strays.join("\n# ")}`);
+  if (process.env.GTM_TEST_KEEP === "1") return;
   for (const name of fs.readdirSync(s.work)) if (name !== "logs") fs.rmSync(path.join(s.work, name), { recursive: true, force: true });
   if (!fs.readdirSync(s.work).length) fs.rmdirSync(s.work);
 });
@@ -170,9 +178,9 @@ test("7.2 gtm dev: 127.0.0.1 only; four views + API with the local database and 
         const context = await json("/api/gtm/context");
         const ctx = context.groups.find((g) => g.name === "Context");
         assert.ok(ctx, JSON.stringify(context));
-        assert.deepEqual(ctx.files.map((f) => f.path), ["AGENTS.md"]);
+        assert.deepEqual(ctx.files.map((f) => f.path), [], "an empty context/ lists nothing under Context");
         for (const g of context.groups) assert.ok(["Context", "Skills"].includes(g.name) && Array.isArray(g.files), JSON.stringify(g));
-        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files ?? [], []);
+        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files.map((f) => f.path), ["AGENTS.md"], "AGENTS.md is under Skills (§4)");
         const agents = await json("/api/gtm/context/file?path=AGENTS.md");
         assert.equal(agents.path, "AGENTS.md");
         assert.ok(agents.markdown.includes("<!-- BEGIN:gtm -->"));
@@ -602,7 +610,9 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
     const pkgBefore = JSON.parse(read("package.json"));
     assertOk(await init(["--slack"]), "gtm init --slack");
     const diff = diffSnapshots(before, snapshot(s.dir));
-    assert.deepEqual(diff.removed, [], "removed");
+    // Accepted deviation (lead): eve's discovery refuses non-skill entries, so --slack drops the empty folder's
+    // .gitkeep placeholder from .agents/skills (which agent/skills links to). Nothing else may go.
+    assert.deepEqual(diff.removed.filter((f) => f !== ".agents/skills/.gitkeep"), [], "removed");
     assert.deepEqual(diff.changed.filter((f) => f !== "package.json" && f !== "package-lock.json"), [], "changed besides package.json");
     assert.deepEqual(diff.added.filter((f) => f !== "agent" && !f.startsWith("agent/")), [], "added outside agent/");
     assert.ok(diff.added.includes("agent"), "agent/ added");
@@ -622,7 +632,9 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
 
     await startDev();
     try {
-      await get("/eve/v1/session", { method: "POST", body: {} }).catch(() => {}); // let eve start whatever it starts
+      // Reaching eve makes it start whatever it starts; deny-all auth should refuse the call.
+      const session = await get("/eve/v1/session", { method: "POST", body: {} }).catch((e) => ({ status: e.message, text: "" }));
+      t.diagnostic(`POST /eve/v1/session (no credentials): ${session.status} ${session.text.slice(0, 120)}`);
       await new Promise((r) => setTimeout(r, 5000));
       const sockets = devSockets();
       t.diagnostic(`listening: ${sockets.map((x) => x.local).join(" ")}`);
@@ -630,4 +642,7 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
     } finally {
       await stopDev();
     }
+    // A local `next build` does not compile agent/ (eve builds it on Vercel). Report eve's own build; never fail on it.
+    const eveBuild = await run(file("node_modules/.bin/eve"), ["build", "--skip-sandbox-prewarm"], { cwd: s.dir, name: "eve-build", timeout: 10 * MIN });
+    t.diagnostic(`eve build --skip-sandbox-prewarm: exit ${eveBuild.code} (log ${eveBuild.log})${eveBuild.code ? `\n${tail(eveBuild.output, 1500)}` : ""}`);
   });

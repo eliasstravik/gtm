@@ -29,12 +29,12 @@ export async function shell(): Promise<Response> {
   return json({ company, environment: environment(), database, pages });
 }
 
-/** Repo-relative paths the Context view may show: AGENTS.md, context/**\/*.md, .agents/skills/*\/SKILL.md. */
+/** Repo-relative paths the Context view may show: context/**\/*.md; under "Skills", AGENTS.md and .agents/skills/*\/SKILL.md. */
 async function contextPaths(): Promise<{ context: string[]; skills: string[] }> {
   const files = await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), "context"), { recursive: true }).catch(() => [] as string[]);
   const context = files.filter((f) => f.endsWith(".md")).map((f) => `context/${f.split(path.sep).join("/")}`).sort();
   const skills = (await readdir(path.join(/*turbopackIgnore: true*/ process.cwd(), ".agents/skills")).catch(() => [] as string[])).sort();
-  return { context: ["AGENTS.md", ...context], skills: skills.map((s) => `.agents/skills/${s}/SKILL.md`) };
+  return { context, skills: ["AGENTS.md", ...skills.map((s) => `.agents/skills/${s}/SKILL.md`)] };
 }
 
 /** GET /context → { groups: [{ name: "Context" | "Skills", files: [{ path, title }] }] } (missing files left out). */

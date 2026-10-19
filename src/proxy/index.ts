@@ -83,7 +83,7 @@ export async function gtmProxy(req: Request): Promise<Response | undefined> {
   if (path === PROBE_PATH) return undefined;
   const bypass = carriesBypass(req);
   if (bypass && !bypassAllowed(path, bypass)) {
-    return refuse("Requests carrying a Vercel protection bypass can reach only webhooks, Slack, and run start and status.");
+    return refuse("A Vercel protection bypass is accepted only on webhooks and Slack (their own secret) and, as the header, on run start and status.");
   }
   if (failClosedExempt(path)) return undefined;
   const host = requestHost(req);

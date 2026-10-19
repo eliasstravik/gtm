@@ -17,9 +17,9 @@ export const REPO = fileURLToPath(new URL("..", import.meta.url));
 export const MIN = 60_000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** The only environment commands get: PATH and HOME (needed to run anything), the harness's telemetry opt-out, extras. */
+/** The only environment commands get: PATH and HOME (needed to run anything), the harness's telemetry opt-outs, extras. */
 export function cleanEnv(extra = {}) {
-  return { PATH: process.env.PATH, HOME: process.env.HOME, NEXT_TELEMETRY_DISABLED: "1", ...extra };
+  return { PATH: process.env.PATH, HOME: process.env.HOME, NEXT_TELEMETRY_DISABLED: "1", EVE_TELEMETRY_DISABLED: "1", ...extra };
 }
 
 /** A fresh work folder under GTM_TEST_DIR (default: the OS temp dir). */
@@ -240,6 +240,20 @@ export function processTree(root, cwd) {
     }
   }
   return tree;
+}
+
+/**
+ * Kills every process still running inside `dir` (detached ones escape their group, e.g. Next's telemetry flush,
+ * which loads next.config and so starts the workflow builder). Returns their command lines.
+ */
+export function killInside(dir) {
+  const strays = [...processTree(-1, dir)].map((pid) => {
+    let cmd = "";
+    try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim(); } catch {}
+    try { process.kill(pid, "SIGKILL"); } catch {}
+    return `${pid} ${cmd}`;
+  });
+  return strays;
 }
 
 /** Every listening TCP socket (IPv4 and IPv6) owned by one of `pids`, from `ss -ltnp`. */
