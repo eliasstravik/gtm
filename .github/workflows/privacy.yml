@@ -1,7 +1,7 @@
 # Fails the build when a secret or private data (AGENTS.md, Public repo) is in any file of the history, any commit
-# message, or a pull request's title or description: gitleaks' default rules (keys, tokens) and our own
-# (.github/private-data.toml: Tailscale names and addresses, deployment hostnames, emails, home-folder paths). Findings
-# are printed redacted.
+# message or a pull request's title or description, or when a commit's email is not a GitHub noreply address. Scans
+# use gitleaks' default rules (keys, tokens) and our own (.github/private-data.toml: Tailscale names and addresses,
+# deployment hostnames, emails, home-folder paths). Findings are printed redacted.
 name: privacy
 
 on:
@@ -32,6 +32,13 @@ jobs:
 
       - name: Files in every commit
         run: .github/leaks.sh git --log-opts=--all . < /dev/null
+
+      # Author and committer must be GitHub noreply addresses (git config user.email <id>+<login>@users.noreply.github.com).
+      # Only the commits are printed, never the addresses, since CI logs are public.
+      - name: Commit emails
+        run: |
+          bad=$(git log --all --format='%h %ae %ce' | awk '{ for (i = 2; i <= 3; i++) if ($i !~ /^([0-9]+\+)?[A-Za-z0-9-]+@users\.noreply\.github\.com$/ && $i != "noreply@github.com") { print $1; next } }')
+          if [ -n "$bad" ]; then echo "Commits whose author or committer email is not a GitHub noreply address:"; echo "$bad"; exit 1; fi
 
       - name: Commit messages
         run: git log --all --format='%H%n%B' | .github/leaks.sh stdin

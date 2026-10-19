@@ -11,7 +11,8 @@ descriptions and comments, reviews, issues, releases and CI logs. Never put any 
 - secrets: keys, tokens, passwords, bypass or webhook secrets, connection strings with credentials;
 - real hostnames and URLs of private machines or deployments: Tailscale names (`*.ts.net`) and addresses
   (CGNAT `100.x`), private IPs, `*.vercel.app` deployments, VM names, preview links;
-- email addresses (commit trailers use `noreply` addresses);
+- email addresses: commit authors and committers use the GitHub noreply address (this repo's `git config user.email`),
+  trailers use `noreply` addresses;
 - customer or company data: names, ICPs, personas, leads, pipeline, run results, Slack, Vercel or GitHub IDs of a
   real workspace;
 - local paths (home folders on Linux, macOS or Windows) and links to local reports or files.

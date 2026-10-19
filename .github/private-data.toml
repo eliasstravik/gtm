@@ -47,6 +47,7 @@ regexes = [
   '''box\.tail(?:1234)?\.ts\.net''',
   '''noreply@anthropic\.com''',
   '''[a-z0-9.+-]+@users\.noreply\.github\.com''',
+  '''\bnoreply@github\.com''',
   '''@(?:example\.(?:com|org|net)|[a-z0-9-]+\.(?:test|invalid|example))\b''',
   '''git@github\.com''',
   '''/home/runner/''',
