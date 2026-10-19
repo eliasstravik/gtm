@@ -1,4 +1,4 @@
-/** The cockpit (Shell, Cockpit) and the components agent-made pages reuse (Table, Markdown). */
+/** The cockpit (Shell, Cockpit) and the components artifacts (agent-made pages) reuse (Table, Markdown). */
 export { Shell } from "./shell.js";
 export { Cockpit } from "./cockpit.js";
 export { Table } from "./table.js";

@@ -7,7 +7,7 @@ process (at most 3 connections locally).
 
 - Locally with no `DATABASE_URL`, `npm run dev` serves the project's own PGlite database on 127.0.0.1 and passes
   its URL to the app. Hosted, `DATABASE_URL` is required and `db()` fails loudly without it.
-- It throws during `next build` (pages.md); in workflow files call it only inside `"use step"` bodies.
+- It throws during `next build` (artifacts.md); in workflow files call it only inside `"use step"` bodies.
 
 ## Tables and migrations
 

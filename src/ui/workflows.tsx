@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Pending, useApi } from "./load.js";
 import { Table } from "./table.js";
 
@@ -15,22 +15,14 @@ const duration = (ms: number | null) =>
 /** Workflows: the registry with schedules and the Workflow SDK's recent runs. Read-only; refreshes every 5 s while the tab is visible. */
 export function WorkflowsView() {
   const { data, error, at, reload } = useApi<Workflows>("workflows");
-  const [visible, setVisible] = useState(true);
+  // One timer at a time, armed after each result, so a slow answer is never cut off; a hidden tab stops polling and
+  // refreshes as soon as it is shown again.
   useEffect(() => {
-    const sync = () => {
-      setVisible(document.visibilityState === "visible");
-      if (document.visibilityState === "visible") reload();
-    };
-    setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
-  }, [reload]);
-  // One timer at a time, armed after each result, so a slow answer is never cut off and a hidden tab never polls.
-  useEffect(() => {
-    if (!visible) return;
-    const timer = setTimeout(reload, 5000);
-    return () => clearTimeout(timer);
-  }, [visible, at, reload]);
+    const tick = () => document.visibilityState === "visible" && reload();
+    const timer = setTimeout(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", tick); };
+  }, [at, reload]);
   if (!data) return <Pending error={error} />;
   return (
     <>

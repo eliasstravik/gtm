@@ -113,7 +113,7 @@ async function database(dir: string, r: Report): Promise<void> {
       return url;
     });
     r.info.push(`Database: ${databaseIdentity(url)}${local ? " (local PGlite in .gtm/)" : ""}`);
-    if (!local) return void r.info.push(`DATABASE_URL: ${redact(url)} (from env files)`);
+    if (!local) return; // a DATABASE_URL from env files is the person's own; its identity above is enough
     // The URL is stable only when `gtm dev` serves it; a short-lived server's lock is gone by now.
     const lock = readJson(join(dir, ".gtm", "db.lock"));
     const live = lock?.dev && lock.port === Number(new URL(url).port) && typeof lock.pid === "number" && alive(lock.pid);
@@ -123,12 +123,6 @@ async function database(dir: string, r: Report): Promise<void> {
     if (message.includes(PRODUCTION_DATABASE)) problem(r, "The database is stamped as production's.", "point DATABASE_URL at a dev branch (`npx @eliasstravik/gtm docs data`)");
     else problem(r, `The database is unreachable: ${message}`, local ? "see `npx @eliasstravik/gtm docs local`" : "check DATABASE_URL in your env files");
   }
-}
-
-function redact(url: string): string {
-  const u = new URL(url);
-  if (u.password) u.password = "****";
-  return u.toString();
 }
 
 /** `--prod`: production answers with Vercel's login, and the project has no protection holes. */

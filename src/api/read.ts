@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
-import { pageSlugs } from "../shared/scan.js";
+import { artifactSlugs } from "../shared/scan.js";
 import { HttpError, json, toJson } from "./http.js";
 
 const PAGE_SIZE = 100;
@@ -18,15 +18,15 @@ function heading(markdown: string, h1 = false): string | undefined {
   return body.match(h1 ? /^# +(.+?)(?:\s+#+)?\s*$/m : /^#{1,6} +(.+?)(?:\s+#+)?\s*$/m)?.[1];
 }
 
-/** GET /shell → { company, environment, database, pages }. Dev rescans app/ per request; hosted reads GTM_PAGES. */
+/** GET /shell → { company, environment, database, artifacts }. Dev rescans app/ per request; hosted reads GTM_ARTIFACTS. */
 export async function shell(): Promise<Response> {
   const company = heading((await read("context/company.md")) ?? "", true) ?? "GTM";
   const url = value("DATABASE_URL");
   // An unparseable URL shows as no database; Data reports the real error.
   const database = url && URL.canParse(url) ? databaseIdentity(url) : null;
-  // process.env.GTM_PAGES literally, so the value withGtm inlines at build time is the one read.
-  const pages: string[] = isHosted() ? JSON.parse(process.env.GTM_PAGES ?? "[]") : pageSlugs();
-  return json({ company, environment: environment(), database, pages });
+  // process.env.GTM_ARTIFACTS literally, so the value withGtm inlines at build time is the one read.
+  const artifacts: string[] = isHosted() ? JSON.parse(process.env.GTM_ARTIFACTS ?? "[]") : artifactSlugs();
+  return json({ company, environment: environment(), database, artifacts });
 }
 
 /** Repo-relative paths the Context view may show: context/**\/*.md; under "Skills", AGENTS.md and .agents/skills/*\/SKILL.md. */

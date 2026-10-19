@@ -1,19 +1,19 @@
-/** What withGtm bakes into the build (GTM_PAGES, GTM_CRONS) and the API rescans per request in dev. No pg. */
+/** What withGtm bakes into the build (GTM_ARTIFACTS, GTM_CRONS) and the API rescans per request in dev. No pg. */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** `app/` folders that are cockpit routes, never listed as agent-made pages. */
-export const RESERVED_PAGES = ["context", "workflows", "data", "connections", "api", "eve", "_gtm"];
+/** `app/` folders that are cockpit routes, never listed as artifacts. */
+export const RESERVED = ["context", "workflows", "data", "connections", "api", "eve", "_gtm"];
 
 /**
- * Agent-made page slugs: every `app/<slug>/page.tsx` minus RESERVED_PAGES, sorted. Route groups, dynamic segments,
+ * Artifacts (agent-made pages): every `app/<slug>/page.tsx` minus RESERVED, sorted. Route groups, dynamic segments,
  * private and parallel folders ((x), [x], _x, @x) are not pages.
  */
-export function pageSlugs(dir = process.cwd()): string[] {
+export function artifactSlugs(dir = process.cwd()): string[] {
   const app = join(/*turbopackIgnore: true*/ dir, "app");
   if (!existsSync(app)) return [];
   const page = (n: string) =>
-    /^[a-z0-9]/i.test(n) && !RESERVED_PAGES.includes(n) && existsSync(join(/*turbopackIgnore: true*/ app, n, "page.tsx"));
+    /^[a-z0-9]/i.test(n) && !RESERVED.includes(n) && existsSync(join(/*turbopackIgnore: true*/ app, n, "page.tsx"));
   return readdirSync(app).filter(page).sort();
 }
 

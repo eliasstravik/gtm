@@ -43,7 +43,7 @@ class GtmPool extends pg.Pool {
  */
 export function db(): NodePgDatabase {
   if (process.env.NEXT_PHASE === "phase-production-build") {
-    throw new Error('db() was called during `next build`: pages that read data must be dynamic (export const dynamic = "force-dynamic").');
+    throw new Error('db() was called during `next build`: pages (artifacts) that read data must be dynamic (export const dynamic = "force-dynamic").');
   }
   const store = globalThis as { [KEY]?: NodePgDatabase };
   if (store[KEY]) return store[KEY];

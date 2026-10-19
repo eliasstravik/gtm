@@ -22,11 +22,11 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
 ## What you get
 
 One repo per company: `context/` (Markdown), `workflows/` (the registry in `workflows/index.ts`), `db/`
-(workflow-owned tables), `app/` (the cockpit, webhooks and agent-made pages), `AGENTS.md` with a managed
+(workflow-owned tables), `app/` (the cockpit, webhooks and artifacts: agent-made pages), `AGENTS.md` with a managed
 block, `.env.example` listing every connection, and `vercel.json` for schedules. The full layout is in
 [docs/layout.md](docs/layout.md); the template itself is [starter/](starter/).
 
-The cockpit has four views: **Context**, **Workflows**, **Data** and **Connections**, plus any pages the agent
+The cockpit has four views: **Context**, **Workflows**, **Data** and **Connections**, plus the artifacts (pages) the agent
 adds. Risky or costly runs start only after a yes in chat; the cockpit has no start or approve buttons.
 
 ## Docs
@@ -40,7 +40,7 @@ The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
 | [workflows](docs/workflows.md) | the registry, preview → yes in chat → run, `gtm run`, run size |
 | [data](docs/data.md) | `db()`, migrations, the production stamp, local data |
 | [connections](docs/connections.md) | `.env.example`, saving keys locally and live |
-| [pages](docs/pages.md) | agent-made pages and the exported components |
+| [artifacts](docs/artifacts.md) | artifacts (agent-made pages) and the exported components |
 | [local](docs/local.md) | zero-sign-up local work, AI step backends, switching to real services |
 | [deploy](docs/deploy.md) | going live on Vercel |
 | [webhooks](docs/webhooks.md) | inbound webhooks |

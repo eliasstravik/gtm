@@ -18,7 +18,7 @@ except the managed block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm 
 | `app/[[...path]]/page.tsx` | the built-in views |
 | `app/api/gtm/[...path]/route.ts` | `gtm({ workflows })`: cockpit reads, start, runs, cron, Connections save |
 | `app/api/hooks/<sender>/route.ts` | inbound webhooks (webhooks.md) |
-| `app/<slug>/page.tsx` | agent-made pages, listed under "Pages" (pages.md) |
+| `app/<slug>/page.tsx` | artifacts (agent-made pages), listed under "Artifacts" (artifacts.md) |
 | `.agents/skills/` | the company's own project skills, one `<name>/SKILL.md` each |
 | `.claude/skills` | symlink to `../.agents/skills`; how Claude Code sees the company's skills |
 | `agent/` | optional Slack agent, added by `npx @eliasstravik/gtm init --slack` (slack.md) |
@@ -42,8 +42,8 @@ Gitignored: `.env*.local`, `.gtm/` (local database), `.workflow-data/` (local ru
 ## What the cockpit reads
 
 - Shell: the company name is the first `# ` heading of `context/company.md` (else "GTM"); the badge shows the
-  environment (Local, Preview, Production) and the database identity. Menu: Context, Workflows, Data,
-  Connections, then "Pages".
+  environment (Local, Preview, Production) and the database identity, at the top of the sidebar; then Context,
+  Workflows, Data, Connections, then "Artifacts". Below 1024px wide the sidebar folds behind a menu button.
 - Context: every `context/**/*.md` sorted by path; under "Skills", `AGENTS.md` and every
   `.agents/skills/*/SKILL.md`. Read-only; hosted, each file links to GitHub. Only `.md` files show.
 - Workflows: the names in `workflows/index.ts`, the schedules in `vercel.json`, and recent runs from the

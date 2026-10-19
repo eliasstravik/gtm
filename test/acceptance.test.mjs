@@ -174,7 +174,7 @@ test("7.2 gtm dev: 127.0.0.1 only; four views + API with the local database and 
         assert.equal(shell.company, "GTM", "no context/company.md → company 'GTM'");
         assert.equal(shell.environment, "local");
         assert.equal(shell.database, "127.0.0.1", "database = identity of the local URL");
-        assert.deepEqual(shell.pages, []);
+        assert.deepEqual(shell.artifacts, []);
         const context = await json("/api/gtm/context");
         const ctx = context.groups.find((g) => g.name === "Context");
         assert.ok(ctx, JSON.stringify(context));
@@ -358,7 +358,7 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
     });
   });
 
-test("7.5 app/pipeline/page.tsx shows under Pages and renders in the shell, without restarting gtm dev", { timeout: 10 * MIN }, async (t) => {
+test("7.5 app/pipeline/page.tsx shows under Artifacts and renders in the shell, without restarting gtm dev", { timeout: 10 * MIN }, async (t) => {
   if (!ready()) return t.skip("no project (7.1 failed)");
   await ensureDev();
   const pid = s.dev.pid;
@@ -366,8 +366,8 @@ test("7.5 app/pipeline/page.tsx shows under Pages and renders in the shell, with
   return <main><h1>Pipeline</h1><p>acceptance-pipeline-marker</p></main>;
 }
 `);
-  const pages = await poll(async () => (await json("/api/gtm/shell")).pages.includes("pipeline"), { timeout: MIN });
-  assert.ok(pages, `pipeline not in /api/gtm/shell pages: ${JSON.stringify((await json("/api/gtm/shell")).pages)}`);
+  const listed = await poll(async () => (await json("/api/gtm/shell")).artifacts.includes("pipeline"), { timeout: MIN });
+  assert.ok(listed, `pipeline not in /api/gtm/shell artifacts: ${JSON.stringify((await json("/api/gtm/shell")).artifacts)}`);
   const r = await get("/pipeline");
   assert.equal(r.status, 200, r.text.slice(0, 300));
   assert.ok(r.text.includes("acceptance-pipeline-marker"), "page content");
@@ -375,6 +375,7 @@ test("7.5 app/pipeline/page.tsx shows under Pages and renders in the shell, with
     assert.ok(r.text.includes(`href="${view}"`), `the shell's menu (${view}) wraps the page`);
   }
   assert.ok(r.text.includes('href="/context"') || r.text.includes('href="/"'), "the shell's menu (Context) wraps the page");
+  assert.ok(r.text.includes('class="gtm-sidebar"') && r.text.includes('aria-label="Open menu"'), "sidebar, and a menu button for narrow screens");
   assert.equal(s.dev.pid, pid);
   assert.equal(s.dev.exitCode, undefined, "gtm dev was not restarted");
 });
