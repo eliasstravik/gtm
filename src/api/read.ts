@@ -4,7 +4,8 @@ import path from "node:path";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, environment, isHosted, PRODUCTION_DATABASE, value } from "../shared/env.js";
 import { parseSkill, SKILL_NAME, SKILLS_DIR } from "../shared/skill.js";
-import { exampleConnections } from "./connections.js";
+import { missingConnections } from "./connections.js";
+import type { Registry } from "./runs.js";
 import { HttpError, json, toJson } from "./http.js";
 
 const PAGE_SIZE = 100;
@@ -21,14 +22,14 @@ function heading(markdown: string, h1 = false): string | undefined {
 
 /**
  * GET /shell → { company, environment, database, deployment, connectionsMissing }: `deployment` changes with every
- * deploy (so open pages reload for new code), `connectionsMissing` counts `.env.example` names not set here.
+ * deploy (so open pages reload for new code), `connectionsMissing` counts keys not set here.
  */
-export async function shell(): Promise<Response> {
+export async function shell(workflows: Registry): Promise<Response> {
   const company = heading((await read("context/company.md")) ?? "", true) ?? "GTM";
   const url = value("DATABASE_URL");
   // An unparseable URL shows as no database; Data reports the real error.
   const database = url && URL.canParse(url) ? databaseIdentity(url) : null;
-  const connectionsMissing = exampleConnections().filter((c) => value(c.name) === undefined).length;
+  const connectionsMissing = missingConnections(workflows);
   return json({ company, environment: environment(), database, deployment: process.env.VERCEL_DEPLOYMENT_ID ?? null, connectionsMissing });
 }
 

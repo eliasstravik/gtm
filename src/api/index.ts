@@ -60,7 +60,7 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
       if (head === "inspector") return await inspector(req, rest);
       if (head === "database") return await database(req, rest);
       if (!get) throw new HttpError(405, "The Console is read-only");
-      if (head === "shell" && !rest.length) return await shell();
+      if (head === "shell" && !rest.length) return await shell(workflows);
       if (head === "release" && !rest.length) return await releaseStatus(url.searchParams);
       if (head === "context" && !rest.length) return await contextList();
       if (head === "context" && one === "file") return await contextFile(url.searchParams.get("path"));

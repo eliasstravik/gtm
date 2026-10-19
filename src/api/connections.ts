@@ -278,6 +278,13 @@ function changeLocal(c: Change): Done {
 
 type State = "set" | "missing" | "saved" | "provided" | "readonly";
 
+/** The sidebar's count: names `.env.example` lists or workflows declare that are not set here (AI Gateway hosted is). */
+export function missingConnections(workflows: Registry): number {
+  const declared = Object.values(workflows).flatMap((e) => (typeof e === "function" ? [] : e.connections ?? []));
+  const names = new Set([...exampleConnections().map((c) => c.name), ...declared]);
+  return [...names].filter((n) => value(n) === undefined && !(isHosted() && /^AI_GATEWAY_/i.test(n))).length;
+}
+
 /**
  * GET /api/gtm/connections: every connection by name and label, never a value: `.env.example`'s names, those set in
  * `.env.local` (locally) or in Vercel's Production env (hosted, with GTM_VERCEL_TOKEN), and those workflows declare.
