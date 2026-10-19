@@ -1,10 +1,10 @@
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pg from "pg";
 import { assertNotProduction, databaseIdentity, PRODUCTION_DATABASE, value } from "../shared/env.js";
-import { extractBlock, findProject, loadEnv, managedBlock, packageRoot, readJson, RESTORED, skillLinks } from "./project.js";
+import { extractBlock, findProject, loadEnv, managedBlock, packageRoot, readJson, RESTORED, SKILLS_TARGET, skillLinks } from "./project.js";
 
 type Report = { problems: string[]; warnings: string[]; info: string[] };
 
@@ -12,7 +12,7 @@ const INIT = "run `npx @eliasstravik/gtm init` in the project";
 const LAYOUT = "recreate it as the starter has it (`npx @eliasstravik/gtm docs layout`)";
 /** Files the layout needs besides the ones `gtm init` restores. */
 const REQUIRED = ["package.json", "AGENTS.md", "CLAUDE.md", "next.config.ts", "app/layout.tsx", "context", "db/schema.ts",
-  "drizzle.config.ts", ".env.example", "vercel.json", ".agents/skills"];
+  "drizzle.config.ts", ".env.example", "vercel.json"];
 /** [file, text it must contain, fix]. */
 const CONTAINS: [string, string, string][] = [
   ["CLAUDE.md", "@AGENTS.md", "add the line `@AGENTS.md` so Claude Code reads AGENTS.md"],
@@ -57,14 +57,6 @@ function read(dir: string, file: string): string | undefined {
   }
 }
 
-const sameFile = (a: string, b: string) => {
-  try {
-    return realpathSync(a) === realpathSync(b);
-  } catch {
-    return false;
-  }
-};
-
 const matcher = (src: string) => /matcher\s*:\s*(\[[^\]]*\])/.exec(src)?.[1].replace(/\s+/g, "").replace(/'/g, '"');
 
 function layout(dir: string, r: Report): void {
@@ -79,8 +71,13 @@ function layout(dir: string, r: Report): void {
     const st = lstatSync(path, { throwIfNoEntry: false });
     if (!st) problem(r, `${link} is missing.`, `${INIT} to recreate the link`);
     else if (!st.isSymbolicLink()) r.warnings.push(`${link} is a copy of .agents/skills (symlinks failed here); copy .agents/skills over it after every skill change.`);
-    else if (!sameFile(path, join(dir, ".agents", "skills")))
-      problem(r, `${link} does not point at .agents/skills.`, `delete it and ${INIT}`);
+    else if (readlinkSync(path) !== SKILLS_TARGET) problem(r, `${link} does not point at .agents/skills.`, `delete it and ${INIT}`);
+  }
+  // A Slack project drops .gitkeep (eve loads every entry of agent/skills as a skill), so git keeps no empty folder.
+  if (!existsSync(join(dir, "agent"))) {
+    if (!existsSync(join(dir, ".agents", "skills"))) problem(r, ".agents/skills is missing.", LAYOUT);
+  } else if (existsSync(join(dir, ".agents", "skills", ".gitkeep"))) {
+    problem(r, ".agents/skills/.gitkeep breaks the Slack agent (eve loads every entry there as a skill).", "delete it");
   }
   const agents = read(dir, "AGENTS.md");
   const block = agents == null ? undefined : extractBlock(agents);

@@ -126,6 +126,8 @@ function addSlack(dir: string): boolean {
   if (!existsSync(template)) throw new Error("This version of @eliasstravik/gtm ships no Slack agent template.");
   cpSync(template, join(dir, "agent"), { recursive: true, force: false, errorOnExist: false, filter: (src) => relative(template, src) !== "skills" });
   linkSkills(dir, "agent/skills", false);
+  // eve loads every entry of agent/skills as a skill and refuses `.gitkeep`; a missing or empty folder is fine.
+  rmSync(join(dir, ".agents", "skills", ".gitkeep"), { force: true });
   const pkg = readJson(join(dir, "package.json"));
   if (pkg.dependencies?.eve) return false;
   pkg.dependencies = Object.fromEntries(Object.entries({ ...pkg.dependencies, eve: EVE }).sort(([a], [b]) => a.localeCompare(b)));

@@ -18,6 +18,7 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
    Authentication → All Deployments", until production protection is on; follow [docs/deploy.md](docs/deploy.md).
 
    [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.1%2Fstarter&project-name=gtm&repository-name=gtm&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
+
 ## What you get
 
 One repo per company: `context/` (Markdown), `workflows/` (the registry in `workflows/index.ts`), `db/`
