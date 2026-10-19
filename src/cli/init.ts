@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { isGtmProject, packageRoot, readJson, RESTORED, SKILLS_TARGET, skillLinks, withBlock } from "./project.js";
 
@@ -11,20 +12,27 @@ const SPECIAL = new Set(["gitignore", ".gitignore", "package.json", "AGENTS.md",
 /** The eve version `--slack` adds (the package's optional peer). */
 const EVE = "0.80.1";
 
+const USAGE = "Usage: gtm init [dir] [--company <name>] [--slack]";
+
 /**
- * `gtm init [dir] [--slack] [--package <spec>] [--no-install]`: copies the starter into an empty folder, or repairs
- * an existing gtm project (restores missing wiring and refreshes the AGENTS.md block, nothing else).
- * `--package` (or GTM_PACKAGE_SPEC) replaces the @eliasstravik/gtm dependency spec; it and `--no-install` are for tests.
+ * `gtm init [dir] [--company <name>] [--slack] [--package <spec>] [--no-install]`: copies the starter into an empty
+ * folder, or repairs an existing gtm project (restores missing wiring and refreshes the AGENTS.md block, nothing else).
+ * With no dir it repairs the gtm project in this folder, else creates ./gtm-<company> (asking for the company on a
+ * terminal when --company is missing). `--package` (or GTM_PACKAGE_SPEC) replaces the @eliasstravik/gtm dependency spec; it and `--no-install`
+ * are for tests.
  */
 export async function init(args: string[]): Promise<void> {
-  const options = { slack: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } } as const;
+  const options = { company: { type: "string" }, slack: { type: "boolean" }, package: { type: "string" }, "no-install": { type: "boolean" } } as const;
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options });
-  if (positionals.length > 1) throw new Error("Usage: gtm init [dir] [--slack]");
-  const dir = resolve(positionals[0] ?? ".");
+  if (positionals.length > 1) throw new Error(USAGE);
+  // No folder: repair the project here, else create ./gtm-<company>, never a project inside a project.
+  const here = !positionals[0] && isGtmProject(process.cwd());
+  const company = here ? undefined : values.company?.trim() || (positionals[0] ? undefined : await askCompany());
+  const dir = resolve(positionals[0] ?? (here ? "." : projectFolder(company!)));
   const starter = join(packageRoot(), "starter");
   const fresh = !isGtmProject(dir);
   const repaired = fresh ? [] : repair(dir, starter);
-  if (fresh) create(dir, starter, values.package ?? process.env.GTM_PACKAGE_SPEC);
+  if (fresh) create(dir, starter, values.package ?? process.env.GTM_PACKAGE_SPEC, company);
   const addedEve = values.slack ? addSlack(dir) : false;
   if (fresh || addedEve || !existsSync(join(dir, "node_modules"))) {
     if (values["no-install"]) console.log("Skipped npm install (--no-install).");
@@ -40,6 +48,27 @@ export async function init(args: string[]): Promise<void> {
   then fill in context/company.md`);
 }
 
+/** The folder a company's project gets by default: `gtm-<company>`, lowercase and hyphenated ("Acme Inc" → gtm-acme-inc). */
+function projectFolder(company: string): string {
+  const slug = company.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "").replace(/^gtm-/, "");
+  if (!slug || slug === "gtm") throw new Error(`"${company}" gives no folder name; pass the company's name, for example --company Acme.`);
+  return `gtm-${slug}`;
+}
+
+/** Asks for the company name on a terminal; elsewhere (an agent, CI) the error names the flag. */
+async function askCompany(): Promise<string> {
+  if (!process.stdin.isTTY) throw new Error(`Name the company: gtm init --company Acme creates ./gtm-acme (or give a folder). ${USAGE}`);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question("Company name (the project goes in ./gtm-<company>): ")).trim();
+    if (!answer) throw new Error(`No company name given. ${USAGE}`);
+    return answer;
+  } finally {
+    rl.close();
+  }
+}
+
 function refuseNonEmpty(dir: string): void {
   if (!existsSync(dir)) return;
   const pkg = readJson(join(dir, "package.json"));
@@ -52,7 +81,7 @@ function refuseNonEmpty(dir: string): void {
   if (clash.length) throw new Error(`.claude/skills and .agents/skills both hold ${clash.join(", ")}; merge them by hand, then run init again.`);
 }
 
-function create(dir: string, starter: string, spec: string | undefined): void {
+function create(dir: string, starter: string, spec: string | undefined, company: string | undefined): void {
   refuseNonEmpty(dir);
   mkdirSync(dir, { recursive: true });
   const rel = (src: string) => relative(starter, src).split(sep).join("/");
@@ -64,6 +93,8 @@ function create(dir: string, starter: string, spec: string | undefined): void {
   const claude = join(dir, "CLAUDE.md");
   const text = existsSync(claude) ? readFileSync(claude, "utf8") : "";
   if (!/^@AGENTS\.md\s*$/m.test(text)) writeFileSync(claude, `@AGENTS.md\n${text ? `\n${text}` : ""}`);
+  const companyFile = join(dir, "context", "company.md");
+  if (company) writeFileSync(companyFile, readFileSync(companyFile, "utf8").replace(/^# .*$/m, `# ${company}`));
   const pkg = readJson(join(starter, "package.json"));
   pkg.name = basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[._-]+/, "") || pkg.name;
   pkg.dependencies["@eliasstravik/gtm"] = spec ?? `^${readJson(join(packageRoot(), "package.json")).version}`;

@@ -1,8 +1,10 @@
 # Layout
 
-A gtm project is one Next.js app in one repo and one Vercel project per company. Every file is the company's
-except the managed block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm -->`), which
-`npx @eliasstravik/gtm init` refreshes.
+A gtm project is one Next.js app in one repo and one Vercel project per company, all three named `gtm-<company>`
+(`gtm-acme`). `npx @eliasstravik/gtm init --company Acme` creates `./gtm-acme` in the current folder and puts the
+name in `context/company.md` (without `--company` it asks on a terminal); `init <dir>` uses that folder instead.
+Inside a gtm project, `init` with no folder repairs that project. Every file is the company's except the managed
+block in `AGENTS.md` (`<!-- BEGIN:gtm -->` … `<!-- END:gtm -->`), which `npx @eliasstravik/gtm init` refreshes.
 
 | Path | Holds |
 | --- | --- |

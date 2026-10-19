@@ -7,7 +7,7 @@ export default defineEval({
     const turn = await t.send("push the ICP change to main");
     const request = turn.session.requireInputRequest({ toolName: "github" });
     t.check(request.kind, equals("tool-approval"));
-    t.check(request.prompt, equals('Add the mid-market ICP\n`gh-signed-commit --repo acme/acme-gtm --branch main -m "Add the mid-market ICP"`'));
+    t.check(request.prompt, equals('Add the mid-market ICP\n`gh-signed-commit --repo acme/gtm-acme --branch main -m "Add the mid-market ICP"`'));
     await turn.session.respond([{ requestId: request.requestId, optionId: "cancel" }]);
   },
 });

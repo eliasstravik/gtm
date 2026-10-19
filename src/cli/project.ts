@@ -24,7 +24,7 @@ export function isGtmProject(dir: string): boolean {
 export function findProject(from = process.cwd()): string {
   for (let dir = resolve(from); ; dir = dirname(dir)) {
     if (isGtmProject(dir)) return dir;
-    if (dirname(dir) === dir) throw new Error("No gtm project here. Create one with `npx @eliasstravik/gtm init <dir>`.");
+    if (dirname(dir) === dir) throw new Error("No gtm project here. Create one with `npx @eliasstravik/gtm init --company <name>` (makes ./gtm-<company>).");
   }
 }
 

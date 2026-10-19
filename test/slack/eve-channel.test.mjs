@@ -11,7 +11,7 @@ process.env.VERCEL_ENV = "production";
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 // Shaped like a Vercel OIDC token for this project (the channel must refuse it without even verifying it).
 const oidc = `${b64({ alg: "RS256", typ: "JWT", kid: "k1" })}.${b64({
-  iss: "https://oidc.vercel.com/acme", sub: "owner:acme:project:acme-gtm:environment:production",
+  iss: "https://oidc.vercel.com/acme", sub: "owner:acme:project:gtm-acme:environment:production",
   aud: "https://vercel.com/acme", project_id: "prj_gtm", environment: "production", owner: "acme",
   iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600,
 })}.c2lnbmF0dXJl`;
@@ -30,7 +30,7 @@ const guarded = [
 function call(channel, method, path, params, headers) {
   const route = channel.routes.find((r) => r.method === method && r.path === path);
   assert.ok(route, `${method} ${path} exists`);
-  const url = `https://acme-gtm.vercel.app${path.replace(":sessionId", params.sessionId ?? "")}`;
+  const url = `https://gtm-acme.vercel.app${path.replace(":sessionId", params.sessionId ?? "")}`;
   const body = method === "POST" ? JSON.stringify({ message: "push a change to main" }) : undefined;
   const ctx = { params, waitUntil() {}, attachSession() { throw new Error("reached the session"); }, from() { throw new Error("reached dispatch"); } };
   return route.handler(new Request(url, { method, headers: { "content-type": "application/json", ...headers }, body }), ctx);

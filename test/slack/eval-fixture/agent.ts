@@ -2,9 +2,9 @@ import { defineAgent } from "eve";
 import { mockModel } from "eve/evals";
 
 const push = {
-  command: 'gh-signed-commit --repo acme/acme-gtm --branch main -m "Add the mid-market ICP"',
+  command: 'gh-signed-commit --repo acme/gtm-acme --branch main -m "Add the mid-market ICP"',
   description: "Add the mid-market ICP",
-  permissions: [{ provider: "github", repositories: ["acme/acme-gtm"], access: "write" }],
+  permissions: [{ provider: "github", repositories: ["acme/gtm-acme"], access: "write" }],
 };
 const preview = { workflow: "enrich", input: { limit: 5 }, summary: "Preview of 5 rows, about $0.04." };
 

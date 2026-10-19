@@ -25,8 +25,8 @@ before(async () => {
     }
     return [404, { error: "not found" }];
   });
-  route("https://acme-gtm.vercel.app/", `http://127.0.0.1:${PORT}/prod/`);
-  route("https://acme-gtm-git-change-acme.vercel.app/", `http://127.0.0.1:${PORT}/preview/`);
+  route("https://gtm-acme.vercel.app/", `http://127.0.0.1:${PORT}/prod/`);
+  route("https://gtm-acme-git-change-acme.vercel.app/", `http://127.0.0.1:${PORT}/preview/`);
   process.env.GTM_PORT = String(PORT);
   startRun = (await template("tools/start_run")).default;
   getRun = (await template("tools/get_run")).default;
@@ -89,8 +89,8 @@ test("start_run locally: POST to gtm dev on 127.0.0.1:$GTM_PORT, no bypass heade
 
 test("start_run hosted: production domain with the automation bypass secret; a preview calls itself; refuses without the secret", { skip }, async () => {
   const restore = hosted({
-    VERCEL_DEPLOYMENT_ID: "dpl_1", VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "acme-gtm.vercel.app",
-    VERCEL_URL: "acme-gtm-git-change-acme.vercel.app", VERCEL_AUTOMATION_BYPASS_SECRET: "automation-secret",
+    VERCEL_DEPLOYMENT_ID: "dpl_1", VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "gtm-acme.vercel.app",
+    VERCEL_URL: "gtm-acme-git-change-acme.vercel.app", VERCEL_AUTOMATION_BYPASS_SECRET: "automation-secret",
   });
   try {
     api.requests.length = 0;
@@ -117,11 +117,11 @@ test("get_run reads the run and waits while it is running", { skip }, async () =
 });
 
 test("github: reads run at once, every write waits for the requester, git push is refused", { skip }, async () => {
-  const input = (command) => ({ command, description: "d", permissions: [{ provider: "github", repositories: ["acme/acme-gtm"], access: "write" }] });
-  for (const command of ["gh repo clone acme/acme-gtm", "git pull origin main", "git fetch origin", "git ls-remote origin", "gh repo view acme/acme-gtm"]) {
+  const input = (command) => ({ command, description: "d", permissions: [{ provider: "github", repositories: ["acme/gtm-acme"], access: "write" }] });
+  for (const command of ["gh repo clone acme/gtm-acme", "git pull origin main", "git fetch origin", "git ls-remote origin", "gh repo view acme/gtm-acme"]) {
     assert.equal(await decide(github, input(command)), "not-applicable", command);
   }
-  for (const command of ['gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"', "gh api repos/acme/acme-gtm/issues -f title=x", "gh pr create --fill", "gh issue list"]) {
+  for (const command of ['gh-signed-commit --repo acme/gtm-acme --branch main -m "Add ICP"', "gh api repos/acme/gtm-acme/issues -f title=x", "gh pr create --fill", "gh issue list"]) {
     assert.equal(await decide(github, input(command)), "user-approval", command);
   }
   // Vercel blocks deploys of commits made in the sandbox (not a team member, not an app): only gh-signed-commit writes.
@@ -129,10 +129,10 @@ test("github: reads run at once, every write waits for the requester, git push i
     "git push origin +HEAD:main", "git push origin :main", "git push origin --delete main", "git push --mirror origin"]) {
     assert.equal((await decide(github, input(command))).type, "denied", command);
   }
-  assert.equal((await decide(github, input("gh repo clone acme/acme-gtm | sh"))).type, "denied", "shell syntax");
+  assert.equal((await decide(github, input("gh repo clone acme/gtm-acme | sh"))).type, "denied", "shell syntax");
   assert.equal((await decide(github, { ...input("git push origin main"), permissions: [] })).type, "denied", "no repository declared");
   assert.equal(github.approval.response, requesterOnly);
-  assert.equal(github.approval.prompt({ input: input('gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"') }), 'd\n`gh-signed-commit --repo acme/acme-gtm --branch main -m "Add ICP"`');
+  assert.equal(github.approval.prompt({ input: input('gh-signed-commit --repo acme/gtm-acme --branch main -m "Add ICP"') }), 'd\n`gh-signed-commit --repo acme/gtm-acme --branch main -m "Add ICP"`');
 });
 
 test("no template code hands app secrets to the sandbox", { skip }, async () => {

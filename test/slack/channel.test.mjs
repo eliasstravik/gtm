@@ -115,7 +115,7 @@ test("approval clicks: the requester's yes is delivered, a non-requester's is re
 });
 
 test("approval clicks from a guest or in a Slack Connect channel never reach eve", { skip }, async () => {
-  const request = approvalRequest("github", { command: 'gh-signed-commit --repo acme/acme-gtm --branch main -m "x"' });
+  const request = approvalRequest("github", { command: 'gh-signed-commit --repo acme/gtm-acme --branch main -m "x"' });
   assert.equal((await send(await click(request, "approve", "U0GUEST001", "C0PUBLIC01", "1760000700.000100"), FORM)).responds.length, 0);
   assert.equal((await send(await click(request, "approve", "U0EXTERNAL", "C0PUBLIC01", "1760000700.000100", "T0OTHER001"), FORM)).responds.length, 0);
   assert.equal((await send(await click(request, "approve", "U0MEMBER01", "C0CONNECT1", "1760000700.000100"), FORM)).responds.length, 0);

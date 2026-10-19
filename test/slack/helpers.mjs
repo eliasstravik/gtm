@@ -95,7 +95,7 @@ export async function fakeSlack(port, auth = authTest) {
 export function signed(body, contentType, { secret = SIGNING_SECRET, age = 0 } = {}) {
   const timestamp = String(Math.floor(Date.now() / 1000) - age);
   const signature = `v0=${createHmac("sha256", secret).update(`v0:${timestamp}:${body}`).digest("hex")}`;
-  return new Request("https://acme-gtm.vercel.app/eve/v1/slack?x-vercel-protection-bypass=slack-own-secret", {
+  return new Request("https://gtm-acme.vercel.app/eve/v1/slack?x-vercel-protection-bypass=slack-own-secret", {
     method: "POST", body,
     headers: { "content-type": contentType, "x-slack-request-timestamp": timestamp, "x-slack-signature": signature },
   });

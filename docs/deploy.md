@@ -39,6 +39,7 @@ account step with the vendors' own CLIs and dashboards. Our conventions:
 
 ## Notes
 
+- The GitHub repo and the Vercel project take the folder's name, `gtm-<company>` (layout.md).
 - A `vercel deploy` from a laptop uploads what `.vercelignore` does not exclude (it replaces `.gitignore` there);
   the starter's repeats `.gitignore` and adds the generated `app/.well-known/workflow/`. Git deploys follow
   `.gitignore`.

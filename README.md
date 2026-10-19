@@ -10,7 +10,8 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
 
 ## Get started
 
-1. **Skill**, for any agent: `npx skills add eliasstravik/gtm -g`, then ask your agent to "set up GTM for Acme".
+1. **Skill**, for any agent: `npx skills add eliasstravik/gtm -g`, then ask your agent to "set up GTM for Acme"
+   (it runs `npx @eliasstravik/gtm init --company Acme`, which creates `./gtm-acme`).
 2. **Claude Code plugin**: `/plugin marketplace add eliasstravik/gtm` then `/plugin install gtm@eliasstravik`
    (or `npx plugins add eliasstravik/gtm`).
 3. **Deploy button**: deploys the starter at `v0.0.1` as a new Vercel project with Neon (no Slack agent; add
@@ -21,8 +22,8 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
 
 ## What you get
 
-One repo per company: `context/` (Markdown), `workflows/` (the registry in `workflows/index.ts`), `db/`
-(workflow-owned tables), `app/` (the Console and webhooks), `AGENTS.md` with a managed
+One repo per company, named `gtm-<company>` (`gtm-acme`): `context/` (Markdown), `workflows/` (the registry in
+`workflows/index.ts`), `db/` (workflow-owned tables), `app/` (the Console and webhooks), `AGENTS.md` with a managed
 block, `.env.example` listing every connection, and `vercel.json` for schedules. The full layout is in
 [docs/layout.md](docs/layout.md); the template itself is [starter/](starter/).
 

@@ -44,7 +44,8 @@ const gtm = (args, { env = {}, timeout = 10 * MIN } = {}) =>
   run(bin(), args, { cwd: s.dir, env: cleanEnv(env), timeout, name: `gtm-${args[0]}` });
 const npm = (args, { env = {}, timeout = 20 * MIN } = {}) =>
   run("npm", args, { cwd: s.dir, env: cleanEnv(env), timeout, name: `npm-${args.at(-1)}` });
-const init = (args = []) => run("node", [s.cli, "init", s.dir, ...args], {
+/** `gtm init <s.dir> …`, or with `dir` null `gtm init …` in the work folder (the default ./gtm-<company>). */
+const init = (args = [], dir = s.dir) => run("node", [s.cli, "init", ...(dir ? [dir] : []), ...args], {
   cwd: s.work, env: cleanEnv({ GTM_PACKAGE_SPEC: `file:${s.tarball}` }), timeout: 20 * MIN, name: `gtm-init${args.join("")}`,
 });
 const get = (pathname, opts) => request(PORT, pathname, opts).catch((error) => {
@@ -129,22 +130,24 @@ after(async () => {
   if (!fs.readdirSync(s.work).length) fs.rmdirSync(s.work);
 });
 
-test("7.1 init into an empty folder → npm run build passes → gtm check exits 0, no env vars set", { timeout: 40 * MIN }, async () => {
-  s.dir = path.join(s.work, "acme-gtm");
-  fs.mkdirSync(s.dir);
-  assertOk(await init(), "gtm init");
-  assert.ok(ready(), "init did not install the package (node_modules/.bin/gtm missing)");
-  const installed = JSON.parse(read("node_modules/@eliasstravik/gtm/package.json"));
-  const packed = JSON.parse(fs.readFileSync(path.join(s.cli, "..", "..", "package.json"), "utf8"));
-  assert.equal(installed.version, packed.version, "the project must run the packed tarball");
-  // What init must leave behind (§2), which later checks rely on.
-  assert.ok(exists(".gitignore"), ".gitignore (renamed from starter/gitignore)");
-  assert.equal(fs.readlinkSync(file(".claude/skills")), "../.agents/skills");
-  s.block = read("AGENTS.md").match(BLOCK)?.[0] ?? "";
-  assert.ok(s.block, "AGENTS.md has the managed block");
-  assertOk(await npm(["run", "build"]), "npm run build");
-  assertOk(await gtm(["check"]), "gtm check");
-});
+test("7.1 init --company Acme with no folder creates ./gtm-acme → npm run build passes → gtm check exits 0, no env vars set",
+  { timeout: 40 * MIN }, async () => {
+    s.dir = path.join(s.work, "gtm-acme");
+    assertOk(await init(["--company", "Acme"], null), "gtm init --company Acme");
+    assert.ok(ready(), "init did not install the package (node_modules/.bin/gtm missing)");
+    assert.equal(JSON.parse(read("package.json")).name, "gtm-acme", "the package is named after the folder");
+    assert.match(read("context/company.md"), /^# Acme$/m, "the company name is the heading of context/company.md");
+    const installed = JSON.parse(read("node_modules/@eliasstravik/gtm/package.json"));
+    const packed = JSON.parse(fs.readFileSync(path.join(s.cli, "..", "..", "package.json"), "utf8"));
+    assert.equal(installed.version, packed.version, "the project must run the packed tarball");
+    // What init must leave behind (§2), which later checks rely on.
+    assert.ok(exists(".gitignore"), ".gitignore (renamed from starter/gitignore)");
+    assert.equal(fs.readlinkSync(file(".claude/skills")), "../.agents/skills");
+    s.block = read("AGENTS.md").match(BLOCK)?.[0] ?? "";
+    assert.ok(s.block, "AGENTS.md has the managed block");
+    assertOk(await npm(["run", "build"]), "npm run build");
+    assertOk(await gtm(["check"]), "gtm check");
+  });
 
 test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local database and an empty context/; build/migrate/check alongside",
   { timeout: 40 * MIN }, async (t) => {
