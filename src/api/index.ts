@@ -55,7 +55,7 @@ export function gtm({ workflows }: { workflows: Registry }): { GET: Handler; POS
       if (hosted && carriesBypass(req)) throw new HttpError(403, "Requests carrying a protection bypass cannot read the Console");
       if (head === "connections" && !rest.length) {
         if (req.method === "POST") return await saveConnection(req);
-        if (get) return await listConnections(req);
+        if (get) return await listConnections(req, workflows);
       }
       if (head === "inspector") return await inspector(req, rest);
       if (head === "database") return await database(req, rest);
