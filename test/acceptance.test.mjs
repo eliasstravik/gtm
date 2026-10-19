@@ -146,7 +146,7 @@ test("7.1 init into an empty folder → npm run build passes → gtm check exits
   assertOk(await gtm(["check"]), "gtm check");
 });
 
-test("7.2 gtm dev: 127.0.0.1 only; four views + API with the local database and an empty context/; build/migrate/check alongside",
+test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local database and an empty context/; build/migrate/check alongside",
   { timeout: 40 * MIN }, async (t) => {
     if (!ready()) return t.skip("no project (7.1 failed)");
     const stash = path.join(s.work, "context-stash");
