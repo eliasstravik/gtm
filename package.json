@@ -1,0 +1,62 @@
+{
+  "name": "@eliasstravik/gtm",
+  "version": "0.0.1-rc.1",
+  "description": "A company's go-to-market work as an ordinary Next.js project: context, workflows, a cockpit and an optional Slack agent.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/eliasstravik/gtm.git" },
+  "type": "module",
+  "bin": { "gtm": "dist/cli.js" },
+  "files": ["dist", "docs", "starter", "skills", "migrations"],
+  "exports": {
+    "./next": { "types": "./dist/next/index.d.ts", "default": "./dist/next/index.js" },
+    "./proxy": { "types": "./dist/proxy/index.d.ts", "default": "./dist/proxy/index.js" },
+    "./api": { "types": "./dist/api/index.d.ts", "default": "./dist/api/index.js" },
+    "./db": { "types": "./dist/db/index.d.ts", "default": "./dist/db/index.js" },
+    "./ai": { "types": "./dist/ai/index.d.ts", "default": "./dist/ai/index.js" },
+    "./ui": { "types": "./dist/ui/index.d.ts", "default": "./dist/ui/index.js" },
+    "./package.json": "./package.json"
+  },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.82",
+    "@ai-sdk/openai": "4.0.96",
+    "@electric-sql/pglite": "~0.5.10",
+    "@electric-sql/pglite-socket": "0.2.13",
+    "@next/env": "^16.4.2",
+    "@vercel/oidc": "4.0.1",
+    "marked": "18.1.1",
+    "pg": "8.23.1"
+  },
+  "peerDependencies": {
+    "@ai-sdk/workflow": "^2.0.75",
+    "ai": "^7.0.143",
+    "drizzle-orm": "^0.45.4",
+    "eve": "0.80.1",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "workflow": "^5.2.2",
+    "zod": "^4.6.7"
+  },
+  "peerDependenciesMeta": { "eve": { "optional": true } },
+  "devDependencies": {
+    "@ai-sdk/workflow": "2.0.75",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "ai": "7.0.143",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "5.9.3",
+    "workflow": "5.2.2",
+    "zod": "4.6.7"
+  }
+}
