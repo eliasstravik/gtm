@@ -92,7 +92,7 @@ async function mcpSession<T>(server: McpServer, use: (rpc: Rpc) => Promise<T>): 
     if (reply.error) throw new Error(`MCP server ${host}: ${method} failed: ${String(reply.error.message).slice(0, 300)}`);
     return reply.result;
   };
-  const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "gtm", version: "0.0.3" } });
+  const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "gtm", version: "0.0.4" } });
   headers["mcp-protocol-version"] = init?.protocolVersion ?? "2025-06-18";
   await rpc("notifications/initialized");
   try {
