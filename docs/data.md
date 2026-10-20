@@ -57,6 +57,23 @@ local database, or connect a Neon dev branch to Development and `vercel env pull
 
 Read-only, schema `public` only: one table at a time as a scrolling grid (rows are read as they scroll into view),
 with search, a one-column filter, sorting, a column chooser, and CSV or JSON export of what is shown (capped at
-10,000 rows / 5 MB with a "truncated" notice). A column named `name`, `title` or ending in `_name`/`_title` stays
+10,000 rows / 5 MB with a "truncated" notice; in CSV, text starting with `=`, `+`, `-`, `@`, a tab or a carriage
+return gets a leading `'` so spreadsheets show it instead of running it). A column named `name`, `title` or ending in `_name`/`_title` stays
 pinned on the left; columns ending in `score`, `verdict`, `priority`, `tier`, `fit`, `grade` or `rating` come right
 after it. It runs no SQL from the browser.
+
+## Open database
+
+The Data toolbar's "Open database" goes to a full editor; the Data view is a preview.
+
+- Locally it starts Drizzle Studio for the database the app uses (the local PGlite one or `DATABASE_URL`), with
+  the project's own `drizzle-kit` and `drizzle.config.ts`, on 127.0.0.1 and the first free port from 4983, and
+  opens `https://local.drizzle.studio/?port=<port>` (Chrome may ask to allow local network access). One Studio
+  per `npm run dev`, reused; it stops with it. A production-stamped database is refused. Studio's connection is
+  one of the 10 and shares the one session.
+- Pressed on this machine's Tailscale name (`GTM_ALLOWED_HOSTS`, through `tailscale serve`), Studio is shared
+  with that same Tailscale login only: Tailscale Serve on the first free HTTPS port from 8443 (never Funnel), in
+  front of a loopback gate that admits only that login. `npm run dev` removes the share when it stops. On other
+  private hostnames it says to open the Console on the computer running `npm run dev`.
+- Hosted it links to the Neon console when `NEON_PROJECT_ID` is set, else to the Vercel project's Storage tab
+  (Storage → Open in Neon).

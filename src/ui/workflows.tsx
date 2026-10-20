@@ -8,7 +8,7 @@ import { Link, Search, Status, duration, time, useApi, useQuery } from "./load.j
 import "./workflows.css";
 
 type LastRun = { id: string; status: string; createdAt: string; startedAt: string | null; completedAt: string | null };
-type Workflow = { name: string; schedule: string | null; lastRun: LastRun | null } & About;
+type Workflow = { name: string; schedule: string | null; lastRun: LastRun | null; file: string | null; sourceUrl: string | null } & About;
 type Workflows = { workflows: Workflow[]; runsKnown: boolean; runsUrl: string | null };
 type Run = LastRun & { workflow: string; error: string | null; url: string | null };
 type Runs = { data: Run[]; cursor: string | null; hasMore: boolean; runsUrl: string | null };
@@ -16,6 +16,9 @@ type Runs = { data: Run[]; cursor: string | null; hasMore: boolean; runsUrl: str
 const active = (run?: { status: string } | null) => run?.status === "pending" || run?.status === "running";
 const STATUSES = ["pending", "running", "completed", "failed", "cancelled"];
 const WORDS: Record<string, string> = { pending: "queued" };
+/** Run links go to the local run inspector (a path) or to Vercel's dashboard. */
+const local = (url: string | null) => !!url?.startsWith("/");
+const where = (url: string) => (local(url) ? "Open in Workflow ↗" : "Open in Vercel ↗");
 
 function ago(value: string, now = Date.now()) {
   const seconds = Math.round((now - new Date(value).getTime()) / 1000), minutes = Math.round(seconds / 60);
@@ -42,7 +45,7 @@ const scheduleText = (schedule: string | null) => schedule?.split("; ").map(cron
 
 /** The last run's status as a dot before the name; its time is in the tooltip, the history on the workflow's page. */
 function Dot({ run, known }: { run: LastRun | null; known: boolean }) {
-  const label = run ? `Last run ${WORDS[run.status] ?? run.status} ${ago(run.createdAt)}` : known ? "No recent run" : "";
+  const label = run ? `Last run ${WORDS[run.status] ?? run.status} ${ago(run.createdAt)}` : known ? "Never run" : "";
   return <span className={`wf-dot wf-dot-${run?.status ?? (known ? "never" : "unknown")}`} role={label ? "img" : undefined}
     aria-label={label || undefined} title={label || undefined} />;
 }
@@ -54,7 +57,8 @@ export function WorkflowsView() {
   const search = params.get("q") ?? "", failingOnly = params.get("filter") === "failing";
   const all = state.data?.workflows ?? [], known = state.data?.runsKnown ?? false;
   const words = search.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = all.filter((w) => (!failingOnly || w.lastRun?.status === "failed") && words.every((word) => w.name.toLowerCase().includes(word)));
+  const text = (w: Workflow) => [w.name, w.description, ...(w.tables ?? []), ...(w.connections ?? [])].join(" ").toLowerCase();
+  const shown = all.filter((w) => (!failingOnly || w.lastRun?.status === "failed") && words.every((word) => text(w).includes(word)));
   // "/" jumps to the search, as on most list pages; typing in a field is left alone.
   useEffect(() => {
     const focus = (e: KeyboardEvent) => {
@@ -78,10 +82,13 @@ export function WorkflowsView() {
     </div>
     <div className="page">
       <Status state={state} />
+      {state.data && !known && all.length > 0 && <p role="status" className="notice">
+        Last runs are unavailable. <button type="button" onClick={state.reload}>Retry</button>
+      </p>}
       {state.data && (shown.length ? <ul role="list" className="wf-rows" aria-label="Workflows">
         {shown.map((w) => <li key={w.name} className="wf-row">
           <Dot run={w.lastRun} known={known} />
-          <Link className="wf-link" href={`/workflows/${encodeURIComponent(w.name)}`}>{w.name}</Link>
+          <Link className="wf-link" href={`/workflows/${encodeURIComponent(w.name)}`} title={w.description}>{w.name}</Link>
           {w.schedule && <span className="wf-meta">{scheduleText(w.schedule)}</span>}
         </li>)}
       </ul> : <p className="notice">
@@ -122,12 +129,22 @@ export function WorkflowView({ name: segment }: { name: string }) {
       {view === "runs" ? <RunsView workflow={name} />
         : view === "data" ? <DataView tables={w.tables ?? []} />
         : view === "connections" ? <ConnectionsView only={w.connections ?? null} />
-        : <DiagramView diagram={w.diagram} summary={<>
+        : <DiagramView diagram={w.diagram} actions={<Source workflow={w} local={local(state.data?.runsUrl ?? null)} />} summary={<>
           {w.description && <p className="diagram-description">{w.description}</p>}
           <p className="diagram-trigger">Starts: {scheduleText(w.schedule) ?? "Manual"}</p>
         </>} />}
     </>}
   </>;
+}
+
+/** The workflow's file: on GitHub at the deployed commit when hosted from GitHub, its path to copy locally. */
+function Source({ workflow: { file, sourceUrl }, local }: { workflow: Workflow; local: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (sourceUrl) return <a className="button" href={sourceUrl} target="_blank" rel="noopener noreferrer">View source ↗</a>;
+  if (!file || !local) return null;
+  const copy = () => navigator.clipboard.writeText(file)
+    .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => prompt("Copy the file path", file));
+  return <button type="button" title={file} onClick={copy}>{copied ? "Copied" : "Copy file path"}</button>;
 }
 
 /** How long a run took, or has taken so far: ticks every second while it runs. */
@@ -177,7 +194,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
           <option value="month">Past month</option>
         </select>
         <button type="button" onClick={state.reload}>Refresh</button>
-        {d?.runsUrl && <a className="button" href={d.runsUrl} target="_blank" rel="noopener noreferrer">Open in Vercel ↗</a>}
+        {d?.runsUrl && <a className="button" href={d.runsUrl} target="_blank" rel="noopener noreferrer">{where(d.runsUrl)}</a>}
       </div>
       <Status state={state} />
       {d && <>
@@ -186,7 +203,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
             <thead><tr>{!workflow && <th>Workflow</th>}<th>Started</th><th>Status</th><th>Duration</th><th>Details</th></tr></thead>
             <tbody>
               {d.data.map((r) => <tr key={r.id}>
-                {!workflow && <td><Link href={`/workflows/${encodeURIComponent(r.workflow)}`}>{r.workflow}</Link><div className="muted">{r.id}</div></td>}
+                {!workflow && <td><Link href={`/workflows/${encodeURIComponent(r.workflow)}?view=runs`}>{r.workflow}</Link><div className="muted">{r.id}</div></td>}
                 <td>
                   <time tabIndex={0} dateTime={r.startedAt ?? r.createdAt} title={new Date(r.startedAt ?? r.createdAt).toString()}>{time(r.startedAt ?? r.createdAt)}</time>
                   {!r.startedAt && <span className="muted"> · Created</span>}
@@ -195,7 +212,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
                 <td className="numeric"><Duration run={r} /></td>
                 <td>
                   {r.error && <span className="run-error error" title={r.error}>{r.error}</span>}
-                  {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer">Open in Vercel ↗</a>}
+                  {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer">{where(r.url)}</a>}
                   {!r.error && !r.url && <span className="muted">—</span>}
                 </td>
               </tr>)}

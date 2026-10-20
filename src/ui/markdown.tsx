@@ -17,7 +17,7 @@ const attr = (name: string, v: string | null | undefined) => (v ? ` ${name}="${e
 const marked = new Marked({
   gfm: true,
   renderer: {
-    // Raw HTML in a file is shown as text, never injected; a lone comment (e.g. the AGENTS.md block markers) is dropped.
+    // Raw HTML in a file is shown as text, never injected; a lone comment (`<!-- … -->`) is dropped.
     html: ({ text, block }) => (/^\s*<!--(?:(?!-->)[\s\S])*-->\s*$/.test(text) ? "" : block ? `<p>${esc(text)}</p>` : esc(text)),
     link({ href, title, tokens }) {
       const inner = this.parser.parseInline(tokens);
@@ -33,8 +33,16 @@ const marked = new Marked({
   },
 });
 
-/** GitHub-flavored Markdown, read-only: raw HTML as text, only http(s), mailto and relative links; front matter as YAML. */
-export function Markdown({ source }: { source: string }) {
-  const md = source.replace(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/, "```yaml\n$1\n```\n");
-  return <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(md, { async: false }) }} />;
+const FRONT = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/**
+ * GitHub-flavored Markdown, read-only: raw HTML as text, only http(s), mailto and relative links; front matter as YAML.
+ * With `lead` (a skill's description, null for none) the front matter is dropped and `lead` shows under the first heading.
+ */
+export function Markdown({ source, lead }: { source: string; lead?: string | null }) {
+  const parse = (md: string) => marked.parse(md, { async: false });
+  const body = source.replace(FRONT, "").trimStart(), h1 = /^# .*(?:\r?\n|$)/.exec(body)?.[0] ?? "";
+  const html = lead === undefined ? parse(source.replace(FRONT, "```yaml\n$1\n```\n"))
+    : parse(h1) + (lead ? `<p class="lead">${esc(lead)}</p>` : "") + parse(body.slice(h1.length));
+  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
 }

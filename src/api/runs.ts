@@ -1,11 +1,14 @@
 /** Workflows view, start, runs and cron (plan §3, §4), all through the Workflow SDK; never the database. */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { getRun, start } from "workflow/api";
 import { WorkflowRunNotFoundError } from "workflow/errors";
 import { parseWorkflowName } from "workflow/observability";
 import { getWorld } from "workflow/runtime";
-import { environment, isHosted, safeEqual, value } from "../shared/env.js";
+import { isHosted, safeEqual, value } from "../shared/env.js";
 import { cronSchedules } from "../shared/scan.js";
 import { HttpError, json } from "./http.js";
+import { runsUrl } from "./vercel.js";
 
 type WorkflowFn = (...args: any[]) => Promise<unknown>;
 /** One box of a workflow's diagram: a business step in plain words, not code. */
@@ -63,9 +66,22 @@ const failure = (e: { cause?: { message?: unknown }; message?: string }) =>
 
 const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : null);
 
-/** Best effort: deployments know neither team nor project slug, so Vercel's own deep link asks for them. */
-const vercelUrl = (path: string, title: string) =>
-  isHosted() ? `https://vercel.com/d?to=${encodeURIComponent(`/[team]/[project]/workflows${path}?environment=${environment()}`)}&title=${title}` : null;
+/** The local run inspector (inspector.ts), or Vercel's dashboard hosted: all runs, or one. */
+const runLink = (id?: string) =>
+  isHosted() ? runsUrl(id) : Promise.resolve(`/api/gtm/inspector${id ? `/run/${encodeURIComponent(id)}` : ""}`);
+
+/**
+ * The workflow's source file from its workflowId (`workflow//./workflows/x//fn`, set by the SWC transform): the path
+ * from the project root, and its GitHub page at the deployed commit when hosted from GitHub.
+ */
+function source(id: string | undefined) {
+  const spec = id ? parseWorkflowName(id)?.moduleSpecifier : undefined;
+  if (!spec?.startsWith("./")) return { file: null, sourceUrl: null };
+  const base = spec.slice(2), ext = [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs"].find((e) => existsSync(join(process.cwd(), base + e)));
+  const file = base + (ext ?? ".ts"), [owner, repo, sha] = ["VERCEL_GIT_REPO_OWNER", "VERCEL_GIT_REPO_SLUG", "VERCEL_GIT_COMMIT_SHA"].map((k) => value(k));
+  const github = isHosted() && value("VERCEL_GIT_PROVIDER") === "github" && owner && repo && sha;
+  return { file, sourceUrl: github ? `https://github.com/${owner}/${repo}/blob/${sha}/${file.split("/").map(encodeURIComponent).join("/")}` : null };
+}
 
 /** workflowId (what runs record as workflowName; the SWC transform sets it on each function) ↔ registry name. */
 function ids(workflows: Registry) {
@@ -74,28 +90,36 @@ function ids(workflows: Registry) {
   return { name, id: (n: string) => [...byId].find(([, v]) => v === n)?.[0] };
 }
 
+/** Each workflow's newest run (undefined: none), read per workflow, six at a time; rejects when a read fails. */
+async function lastRuns(workflowIds: string[]): Promise<(RunRow | undefined)[]> {
+  const world = await getWorld(), out: (RunRow | undefined)[] = [];
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(6, workflowIds.length) }, async () => {
+    while (next < workflowIds.length) {
+      const i = next++;
+      out[i] = (await listRuns(world, { pagination: { limit: 1, sortOrder: "desc" }, workflowName: workflowIds[i] })).data[0];
+    }
+  }));
+  return out;
+}
+
 /**
- * GET /workflows → { workflows: [{ name, schedule, lastRun, ...About }], runsKnown, runsUrl }; lastRun from the newest
- * 100 runs, else null.
+ * GET /workflows → { workflows: [{ name, schedule, lastRun, file, sourceUrl, ...About }], runsKnown, runsUrl }:
+ * lastRun is the workflow's newest run, null when it has none or (runsKnown false) runs could not be read.
  */
 export async function workflowsList(workflows: Registry): Promise<Response> {
-  const crons = schedules(), { name } = ids(workflows);
-  const page = await getWorld().then((w) => listRuns(w, { pagination: { limit: 100, sortOrder: "desc" } })).catch((error) => {
+  const crons = schedules(), { id } = ids(workflows), names = Object.keys(workflows);
+  const last = await lastRuns(names.map((n) => id(n) ?? n)).catch((error) => {
     console.error("[gtm] could not list workflow runs", error);
     return null;
   });
-  const last = new Map<string, RunRow>();
-  for (const r of page?.data ?? []) if (!last.has(name(r.workflowName))) last.set(name(r.workflowName), r);
-  const lastRun = (n: string) => {
-    const r = last.get(n);
-    return r ? { id: r.runId, status: r.status, createdAt: iso(r.createdAt), startedAt: iso(r.startedAt), completedAt: iso(r.completedAt) } : null;
-  };
   return json({
-    workflows: Object.entries(workflows).map(([n, e]) => {
-      const { run: _, ...about } = typeof e === "function" ? { run: e } : e;
-      return { name: n, schedule: crons.get(n) ?? null, lastRun: lastRun(n), ...about };
+    workflows: names.map((n, i) => {
+      const e = workflows[n], { run: _, ...about } = typeof e === "function" ? { run: e } : e, r = last?.[i];
+      const lastRun = r ? { id: r.runId, status: r.status, createdAt: iso(r.createdAt), startedAt: iso(r.startedAt), completedAt: iso(r.completedAt) } : null;
+      return { name: n, schedule: crons.get(n) ?? null, lastRun, ...source(id(n)), ...about };
     }),
-    runsKnown: page != null, runsUrl: vercelUrl("", "Workflow+runs"),
+    runsKnown: last != null, runsUrl: await runLink(),
   });
 }
 
@@ -103,7 +127,8 @@ const PERIODS: Record<string, number> = { day: 86_400_000, week: 7 * 86_400_000,
 
 /**
  * GET /workflows/runs?workflow=&status=&period=day|week|month&q=&cursor= → { data, cursor, hasMore, runsUrl }: 50 runs
- * a page, newest first. `q` narrows that page by run id or workflow name, so a page can come back empty with more after it.
+ * a page, newest first; `url` and `runsUrl` open the local inspector, or Vercel's dashboard hosted. `q` narrows that
+ * page by run id or workflow name, so a page can come back empty with more after it.
  */
 export async function runsList(workflows: Registry, p: URLSearchParams): Promise<Response> {
   const { name, id } = ids(workflows);
@@ -120,13 +145,13 @@ export async function runsList(workflows: Registry, p: URLSearchParams): Promise
   // returnValue also decompresses and decrypts the stored error.
   const failed = rows.filter((r) => r.status === "failed").slice(0, 10);
   const errors = new Map(await Promise.all(failed.map(async (r) => [r.runId, await getRun(r.runId).returnValue.then(() => null, failure)] as const)));
-  const data = rows.map((r) => ({
+  const data = await Promise.all(rows.map(async (r) => ({
     id: r.runId, workflow: name(r.workflowName), status: r.status,
     createdAt: iso(r.createdAt), startedAt: iso(r.startedAt), completedAt: iso(r.completedAt),
     error: r.status === "failed" ? (errors.get(r.runId) ?? r.errorCode ?? "failed") : null,
-    url: vercelUrl(`/runs/${encodeURIComponent(r.runId)}`, "Workflow+run"),
-  }));
-  return json({ data, cursor: page.cursor, hasMore: page.hasMore, runsUrl: vercelUrl("", "Workflow+runs") });
+    url: await runLink(r.runId),
+  })));
+  return json({ data, cursor: page.cursor, hasMore: page.hasMore, runsUrl: await runLink() });
 }
 
 /** POST /start/<name> with an optional JSON body (the input) → { runId }. The router has checked the caller. */

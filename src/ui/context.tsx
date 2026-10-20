@@ -4,17 +4,17 @@ import { Link, Status, useApi, useQuery } from "./load.js";
 import { Markdown } from "./markdown.js";
 import "./context.css";
 
-type File = { path: string; title: string };
+type File = { path: string; title: string; description?: string };
 type Group = { name: string; files: File[] };
 type Item = { key: string; label: string; depth: number; file?: File };
 
-/** Tree rows: each folder once, files indented under it (paths arrive sorted). Skills are labelled by their folder. */
+/** Tree rows: each folder once, files indented under it (paths arrive sorted). Skills are labelled by their name. */
 function tree(group: Group): Item[] {
   const out: Item[] = [];
   let prev: string[] = [];
   for (const file of group.files) {
     const parts = file.path.split("/");
-    if (group.name === "Skills") { out.push({ key: file.path, label: parts.at(-2) ?? file.path, depth: 0, file }); continue; }
+    if (group.name === "Skills") { out.push({ key: file.path, label: file.title, depth: 0, file }); continue; }
     const dirs = parts.slice(1, -1); // under context/
     let i = 0;
     while (i < dirs.length && dirs[i] === prev[i]) i += 1;
@@ -25,12 +25,16 @@ function tree(group: Group): Item[] {
   return out;
 }
 
-/** Context: the company's context files and skills as a tree (a picker on phones); the selected one (`?file=`) rendered read-only. */
+/**
+ * Context: the company's context files and skills as a tree (a picker on phones); the selected one (`?file=`) rendered
+ * read-only, a skill with its description as the lead instead of its front matter.
+ */
 export function ContextView() {
   const { params, href, go } = useQuery();
   const list = useApi<{ groups: Group[] }>("context");
   const groups = list.data?.groups ?? [];
   const path = params.get("file") ?? groups.find((g) => g.files.length)?.files[0].path ?? null;
+  const skill = groups.find((g) => g.name === "Skills")?.files.find((f) => f.path === path);
   const doc = useApi<{ path: string; markdown: string; githubUrl: string | null }>(path && `context/file?path=${encodeURIComponent(path)}`);
   // A relative link to another listed file (e.g. `icps/enterprise.md`) opens it here instead of leaving the Console.
   const follow = (e: MouseEvent) => {
@@ -52,12 +56,14 @@ export function ContextView() {
             {trees.map((g) => (
               <section key={g.name}>
                 <h2>{g.name}</h2>
-                {!g.files.length && <p className="dir">None yet</p>}
+                {!g.files.length && <p className="dir">{g.name === "Skills" ? "None yet: .agents/skills/<name>/SKILL.md" : "None yet"}</p>}
                 <ul>
                   {g.items.map((it) => (
                     <li key={it.key} style={{ "--depth": it.depth } as CSSProperties}>
                       {it.file ? (
-                        <Link href={href({ file: it.file.path })} title={it.file.title} aria-current={it.file.path === path ? "page" : undefined}>{it.label}</Link>
+                        <Link href={href({ file: it.file.path })} title={it.file.description ?? it.file.title} aria-current={it.file.path === path ? "page" : undefined}>
+                          {it.label}{it.file.description && <small>{it.file.description}</small>}
+                        </Link>
                       ) : <span className="dir">{it.label}</span>}
                     </li>
                   ))}
@@ -80,7 +86,7 @@ export function ContextView() {
                 <span className="mono">{doc.data.path}</span>
                 {doc.data.githubUrl && <a href={doc.data.githubUrl} target="_blank" rel="noreferrer">Open on GitHub ↗</a>}
               </div>
-              <Markdown source={doc.data.markdown} />
+              <Markdown source={doc.data.markdown} lead={skill && (skill.description ?? null)} />
             </>}
           </article>
         </div>

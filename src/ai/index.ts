@@ -2,19 +2,20 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { WorkflowAgent } from "@ai-sdk/workflow";
 import { gateway, jsonSchema, Output, stepCountIs, tool, type LanguageModel, type ModelMessage, type StepResult, type ToolSet } from "ai";
-import { sleep } from "workflow";
+import { FatalError, sleep } from "workflow";
 import { z } from "zod";
-import { isHosted, value } from "../shared/env.js";
-import { jwtClaims } from "../shared/request.js";
+import { parseSkill, SKILL_NAME, SKILLS_DIR } from "../shared/skill.js";
 import { runAgentCli, type CliBackend, type Reasoning, type Usage } from "./cli.js";
-import { gatewayModel, MODELS, preferred, providerModel, type Family } from "./models.js";
+import { chooseBackend, sanitizeSchema, type Family } from "./models.js";
 import { callMcpTool, fetchPage, listMcpTools, type McpServer } from "./tools.js";
 
-export type { CliBackend, McpServer, Reasoning, Usage };
+export type { CliBackend, McpServer, Reasoning, ToolSet, Usage };
+/** The AI SDK's tool(), for `tools.custom`, so workflow code never imports `ai` itself. */
+export { tool };
 
 /**
- * Agent stage: a durable, tool-using agent inside a workflow. Call agent() from workflow scope, never inside a
- * "use step" function; it makes its own steps. The backend is chosen per call from the environment:
+ * Agent stage: every AI call in a workflow, one-shot (no tools) or tool-using. Call agent() from workflow scope, never
+ * inside a "use step" function; it makes its own steps. The backend is chosen per call from the environment:
  * hosted → AI Gateway; laptop → AI Gateway when AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is set, else
  * ANTHROPIC_API_KEY / OPENAI_API_KEY, else the whole stage as one step through the signed-in `claude` or `codex`.
  * On the Gateway and key paths every model call and every tool call is its own step.
@@ -33,14 +34,25 @@ export type AgentOptions<T = string> = {
   name: string;
   instructions: string;
   prompt: string;
+  /** Company skills by folder name: each `.agents/skills/<name>/SKILL.md` body (no front matter) is added to the instructions. */
+  skills?: string[];
   /** The result the agent must return; plain text when omitted. Use nullable fields, not optional ones, and no string formats. */
   schema?: z.ZodType<T>;
-  /** A Gateway model id; defaults to GTM_MODEL, else the default that follows GTM_AGENT_BACKEND. Ignored on the CLI path. */
+  /**
+   * A Gateway model id; defaults to GTM_MODEL, else the default that follows GTM_AGENT_BACKEND. On the CLI path it
+   * (or GTM_MODEL) goes to `claude --model` / `codex -m` when it is that CLI's family; else the CLI's own default.
+   */
   model?: string;
   reasoning?: Reasoning;
   tools?: AgentTools;
-  /** Model calls, tool turns included. Default 20; when reached, one last call without tools writes up the result. */
+  /** Model calls, tool turns included. Default 20; when reached, one last call without tools writes up the result. Not on the CLI path. */
   maxSteps?: number;
+  /**
+   * Soft spend cap in USD. Gateway and API keys: after the call that reaches it (reported model cost plus tool
+   * costs; API-key providers report no model cost), one last call without tools writes up the result. claude:
+   * `--max-budget-usd`, which stops with no result, so the stage fails. codex reports no cost and has no cap.
+   */
+  maxUsd?: number;
   /** Wall-clock limit ("90s", "5m", "1h", or milliseconds). Default "10m"; the stage fails when it is reached. */
   timeout?: string | number;
 };
@@ -54,33 +66,42 @@ export type AgentResult<T = string> = {
   modelCalls: number;
   toolCalls: AgentToolCall[];
   usage: Usage;
+  /** Why the loop ended: it finished, or maxSteps / maxUsd cut it short and a last call wrote up the result. Always "done" on the CLI path. */
+  stopReason: "done" | "maxSteps" | "maxUsd";
 };
 
-type Route = { kind: "gateway"; model: string } | { kind: Family; model: KeyModel } | { kind: "cli"; cli?: CliBackend };
-
 const WRAP_UP = "Stop using tools now. Return the requested result from what you have found so far; use null or empty lists for anything not established.";
-const NEEDS_API =
-  "custom tools need AI Gateway or an API key: set AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY in .env.local, or run `vercel env pull` for VERCEL_OIDC_TOKEN";
 
 /** Workflow scope. One agent stage: picks the backend, builds the tools, runs the loop, returns the parsed result. */
 export async function agent<T = string>(o: AgentOptions<T>): Promise<AgentResult<T>> {
   const timeoutMs = durationMs(o.timeout ?? "10m");
   for (const n of Object.keys(o.tools?.mcp ?? {})) if (!/^[A-Za-z0-9_-]{1,40}$/.test(n)) throw new Error(`Agent ${o.name}: MCP server name ${n} must be letters, digits, _ or -`);
+  for (const n of o.skills ?? []) if (!SKILL_NAME.test(n)) throw new Error(`Agent ${o.name}: skill ${JSON.stringify(n)} must be a folder name in ${SKILLS_DIR}`);
   const schema = o.schema ? (sanitizeSchema(z.toJSONSchema(o.schema)) as Record<string, unknown>) : undefined;
-  const route = chooseBackend(o);
+  const route = chooseBackend({ name: o.name, model: o.model, custom: Object.keys(o.tools?.custom ?? {}).length > 0 });
+  const instructions = o.skills?.length ? [o.instructions, ...(await readSkills(o.skills))].join("\n\n") : o.instructions;
+  const parse = (v: unknown, from: string) => {
+    if (!o.schema) return v as T;
+    const r = o.schema.safeParse(v);
+    if (r.success) return r.data;
+    throw new Error(`Agent ${o.name}: ${from}'s result does not match the schema: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "(root)"} ${i.message}`).join("; ")}`);
+  };
   if (route.kind === "cli") {
     const web = Boolean(o.tools?.web?.search || o.tools?.web?.fetch);
-    const r = await runAgentCli({ backend: route.cli, instructions: o.instructions, prompt: o.prompt, schema, reasoning: o.reasoning, mcp: o.tools?.mcp, web, timeoutMs });
-    return { ...r, costUsd: round(r.costUsd), value: (o.schema ? o.schema.parse(r.value) : r.value) as T, toolCalls: [] };
+    const r = await runAgentCli({ backend: route.cli, instructions, prompt: o.prompt, schema, model: o.model, reasoning: o.reasoning, mcp: o.tools?.mcp, web, maxUsd: o.maxUsd, timeoutMs });
+    return { ...r, costUsd: round(r.costUsd), value: parse(r.value, route.cli ?? "the CLI"), toolCalls: [], stopReason: "done" };
   }
 
+  const spentUsd = (steps: StepResult<ToolSet>[]) => gatewayUsd(steps) + sum(traceToolCalls(steps), (c) => c.costUsd);
+  const overBudget = (steps: StepResult<ToolSet>[]) => o.maxUsd != null && spentUsd(steps) >= o.maxUsd;
+  // No maxRetries: model steps run with engine retries off (doStreamStep.maxRetries = 0), so the SDK's own 2 are the only ones.
   const loop = new WorkflowAgent({
     id: o.name,
-    model: route.model as LanguageModel,
-    instructions: o.instructions,
+    model: (route.kind === "gateway" ? route.model : new KeyModel(route.kind, route.id)) as LanguageModel,
+    instructions,
     tools: await buildTools(o.tools, route.kind),
     ...(o.reasoning && { reasoning: o.reasoning }),
-    stopWhen: stepCountIs(o.maxSteps ?? 20),
+    stopWhen: [stepCountIs(o.maxSteps ?? 20), ({ steps }) => overBudget(steps as StepResult<ToolSet>[])],
   });
   const output = schema ? Output.object({ schema: jsonSchema<T>(schema as never) }) : Output.text();
   // A race against sleep(): workflow scope has no timers, so AbortSignal.timeout() cannot work here.
@@ -100,49 +121,36 @@ export async function agent<T = string>(o: AgentOptions<T>): Promise<AgentResult
 
   const first = await call({ prompt: o.prompt });
   let { steps, output: result } = first;
+  const stopReason = result !== undefined ? "done" : overBudget(steps) ? "maxUsd" : "maxSteps";
   if (result === undefined) {
-    // maxSteps ended the loop mid-research: one last call, no tools, writes up what was found. WorkflowAgent
-    // rejects system messages inside `messages`, so the instructions travel as the agent's own.
+    // maxSteps or maxUsd ended the loop mid-research: one last call, no tools, writes up what was found.
+    // WorkflowAgent rejects system messages inside `messages`, so the instructions travel as the agent's own.
     const history = first.messages.filter((m) => m.role !== "system");
     const last = await call({ messages: [...history, { role: "user", content: WRAP_UP }], toolChoice: "none" });
     steps = [...steps, ...last.steps];
     result = last.output;
   }
-  if (result === undefined) throw new Error(`Agent ${o.name} returned no result`);
+  if (result === undefined) throw new Error(`Agent ${o.name} returned no result (${stopReason})`);
   const toolCalls = traceToolCalls(steps);
   return {
-    value: (o.schema ? o.schema.parse(result) : result) as T,
-    costUsd: round(gatewayUsd(steps) + sum(toolCalls, (c) => c.costUsd)),
+    value: parse(result, route.kind === "gateway" ? "AI Gateway" : route.kind),
+    costUsd: round(spentUsd(steps)),
     modelCalls: steps.length,
     toolCalls,
     usage: { inputTokens: sum(steps, (s) => s.usage?.inputTokens ?? 0), outputTokens: sum(steps, (s) => s.usage?.outputTokens ?? 0) },
+    stopReason,
   };
 }
 
-/** Workflow scope, in the plan's order: hosted Gateway; laptop Gateway; laptop API key; laptop CLI. */
-function chooseBackend(o: AgentOptions<unknown>): Route {
-  if (isHosted() || value("AI_GATEWAY_API_KEY")) return { kind: "gateway", model: gatewayModel(o.model) };
-  const oidc = value("VERCEL_OIDC_TOKEN");
-  if (oidc) {
-    const { exp } = jwtClaims(oidc);
-    if (typeof exp === "number" && exp * 1000 <= Date.now()) throw new Error("VERCEL_OIDC_TOKEN has expired; run `vercel env pull` again");
-    return { kind: "gateway", model: gatewayModel(o.model) };
-  }
-  const keys = { anthropic: value("ANTHROPIC_API_KEY"), openai: value("OPENAI_API_KEY") };
-  if (keys.anthropic || keys.openai) {
-    const named = o.model?.trim() || value("GTM_MODEL")?.trim();
-    if (named) {
-      const { family, id } = providerModel(named);
-      if (!keys[family]) throw new Error(`Agent ${o.name}: ${named} needs ${family === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"} (or AI_GATEWAY_API_KEY)`);
-      return { kind: family, model: new KeyModel(family, id) };
-    }
-    const first = MODELS[preferred()];
-    const pick = keys[first.family] ? first : Object.values(MODELS).find((m) => keys[m.family])!;
-    return { kind: pick.family, model: new KeyModel(pick.family, pick.provider) };
-  }
-  if (Object.keys(o.tools?.custom ?? {}).length) throw new Error(`Agent ${o.name}: ${NEEDS_API}`);
-  const wanted = value("GTM_AGENT_BACKEND")?.trim().toLowerCase();
-  return { kind: "cli", cli: wanted === "claude" || wanted === "codex" ? wanted : undefined };
+/** Step: each named skill's SKILL.md body, front matter dropped, from the project as deployed (withGtm traces .agents/skills). */
+async function readSkills(names: string[]): Promise<string[]> {
+  "use step";
+  const [{ readFile }, path] = await Promise.all([import("node:fs/promises"), import("node:path")]);
+  return Promise.all(names.map(async (n) => {
+    const text = await readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), SKILLS_DIR, n, "SKILL.md"), "utf8").catch(() => null);
+    if (text == null) throw new FatalError(`No skill "${n}": agent() reads ${SKILLS_DIR}/${n}/SKILL.md, which does not exist`);
+    return parseSkill(text).body.trim();
+  }));
 }
 
 /**
@@ -196,19 +204,6 @@ function durationMs(v: string | number): number {
   const m = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)\s*$/i.exec(v);
   if (!m) throw new Error(`Not a duration: ${v}`);
   return Number(m[1]) * { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2].toLowerCase() as "ms"];
-}
-
-/** OpenAI's strict JSON schema rejects string formats, and `claude --json-schema` the $schema key; the model reads the description instead. */
-function sanitizeSchema(schema: unknown): unknown {
-  if (Array.isArray(schema)) return schema.map(sanitizeSchema);
-  if (!schema || typeof schema !== "object") return schema;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
-    if (k === "$schema" || k === "format") continue;
-    const map = k === "properties" || k === "definitions" || k === "$defs";
-    out[k] = map && v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([p, x]) => [p, sanitizeSchema(x)])) : sanitizeSchema(v);
-  }
-  return out;
 }
 
 /** The Gateway reports each call's cost in its provider metadata. */

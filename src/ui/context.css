@@ -7,6 +7,8 @@
 .file-tree a, .file-tree .dir { display: block; line-height: 28px; padding: 0 8px 0 calc(8px + var(--depth, 0) * 14px); border-radius: 6px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-tree a:hover, .file-tree a[aria-current] { background: var(--hover); color: var(--text); text-decoration: none; }
 .file-tree .dir { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+.file-tree a:has(small) { line-height: 20px; padding-top: 4px; padding-bottom: 6px; white-space: normal; }
+.file-tree small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; line-height: 17px; color: var(--muted); }
 .doc { min-width: 0; padding: 20px 32px 64px; border-left: 1px solid var(--border); }
 .doc > .notice { padding: 0; }
 .doc-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; max-width: 72ch; margin-bottom: 24px; color: var(--muted); font-size: 13px; }
@@ -18,6 +20,7 @@
 .md h2 { font-size: 18px; letter-spacing: -0.01em; margin: 40px 0 8px; }
 .md :is(h3, h4) { font-size: 15px; margin: 28px 0 4px; }
 .md > :first-child { margin-top: 0; }
+.md .lead { font-size: 17px; line-height: 1.6; color: var(--muted); margin-bottom: 28px; }
 .md :is(p, ul, ol, pre, blockquote, table) { margin: 0 0 16px; }
 .md :is(ul, ol) { padding-left: 1.5em; }
 .md li::marker { color: var(--muted); }

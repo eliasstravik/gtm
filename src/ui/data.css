@@ -51,5 +51,6 @@
 @media (max-width: 640px) {
   .data-pane .table-scroll { padding-inline: 12px; }
   .data-pane .toolbar input[type="search"] { min-width: 160px; }
+  .data-pane .toolbar .end { margin-left: 0; }
   .columns-option { min-height: 40px; }
 }

@@ -4,6 +4,10 @@
 under it, titled by its first heading. `init` writes only `context/company.md`. Everything else is added when a
 person asks for it, never on the agent's own initiative.
 
+Facts go in `context/` (what the company is, sells and targets). A procedure (how to write a cold email in the
+company's voice, how to research an account) is a skill instead: `.agents/skills/<name>/SKILL.md` (layout.md, where
+things go). `AGENTS.md` is neither; it holds the coding agents' instructions.
+
 ## The basics
 
 At setup `context/company.md` gets only the company's name as its first heading (the Console header shows it) and a

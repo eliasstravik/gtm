@@ -26,7 +26,7 @@ function layout({ nodes, edges }: Diagram) {
 }
 
 /** A workflow's diagram, written by the agent: what it does in business terms. A box opens its explanation. */
-export function DiagramView({ diagram, summary }: { diagram?: Diagram; summary: ReactNode }) {
+export function DiagramView({ diagram, summary, actions }: { diagram?: Diagram; summary: ReactNode; actions?: ReactNode }) {
   const [selected, setSelected] = useState<string | null>(null), origin = useRef<HTMLElement | null>(null), close = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (selected) close.current?.focus(); }, [selected]);
   const node = diagram?.nodes.find((n) => n.id === selected);
@@ -42,7 +42,7 @@ export function DiagramView({ diagram, summary }: { diagram?: Diagram; summary: 
   }, [g?.width]);
   return (
     <section className="pane diagram-pane" aria-label="Diagram">
-      <div className="diagram-summary">{summary}</div>
+      <div className="diagram-summary"><div>{summary}</div>{actions}</div>
       <div className="diagram-body">
         {!g ? <p className="notice">Diagram unavailable. Ask your agent to add the business diagram.</p> : (
           <div className="diagram-canvas" ref={canvas}>

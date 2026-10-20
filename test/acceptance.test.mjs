@@ -24,7 +24,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import {
   MIN, assertOk, cleanEnv, diffSnapshots, extractCli, httpsStub, killInside, listeningSockets, makeWorkDir, packPackage, poll,
-  portOpen, processTree, request, run, setLogDir, snapshot, sql, startProcess, stopAll, tail, waitForHttp, within,
+  portOpen, processTree, REPO, request, run, setLogDir, snapshot, sql, startProcess, stopAll, tail, vercelStub, waitForHttp, within,
 } from "./helpers.mjs";
 
 const PORT = Number(process.env.GTM_TEST_PORT ?? 4710); // gtm dev
@@ -186,16 +186,14 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         assert.ok(ctx, JSON.stringify(context));
         assert.deepEqual(ctx.files.map((f) => f.path), [], "an empty context/ lists nothing under Context");
         for (const g of context.groups) assert.ok(["Context", "Skills"].includes(g.name) && Array.isArray(g.files), JSON.stringify(g));
-        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files.map((f) => f.path), ["AGENTS.md"], "AGENTS.md is under Skills (§4)");
-        const agents = await json("/api/gtm/context/file?path=AGENTS.md");
-        assert.equal(agents.path, "AGENTS.md");
-        assert.ok(agents.markdown.includes("<!-- BEGIN:gtm -->"));
-        assert.equal(agents.githubUrl, null);
-        const unlisted = await get("/api/gtm/context/file?path=package.json");
-        assert.ok(unlisted.status >= 400 && unlisted.status < 500, `a file the listing does not return → ${unlisted.status}`);
+        assert.deepEqual(context.groups.find((g) => g.name === "Skills")?.files, [], "no skills yet (.gitkeep is no skill)");
+        for (const p of ["package.json", "AGENTS.md"]) {
+          const unlisted = await get(`/api/gtm/context/file?path=${p}`);
+          assert.ok(unlisted.status >= 400 && unlisted.status < 500, `${p}, which the listing does not return → ${unlisted.status}`);
+        }
         const workflows = await json("/api/gtm/workflows");
         assert.deepEqual(workflows.workflows, []);
-        assert.equal(workflows.runsUrl, null);
+        assert.equal(workflows.runsUrl, "/api/gtm/inspector");
         const runs = await json("/api/gtm/workflows/runs");
         assert.ok(Array.isArray(runs.data) && typeof runs.hasMore === "boolean", JSON.stringify(runs));
         assert.deepEqual(await json("/api/gtm/data"), { tables: [] });
@@ -206,6 +204,7 @@ test("7.2 gtm dev: 127.0.0.1 only; the Console views + API with the local databa
         }
         assert.equal(connections.save.mode, "local");
         assert.equal(connections.tokenWarning, null);
+        assert.deepEqual(await json("/api/gtm/database"), { mode: "local" }, "Open database starts Studio here");
       });
     } finally {
       fs.rmSync(file("context"), { recursive: true, force: true });
@@ -297,6 +296,39 @@ export async function record(input: { name: string }) {
       s.runId = run.id;
     });
 
+    await t.test("the run inspector shows the runs and one run with its files under /api/gtm/inspector; the Console links there", async (st) => {
+      if (!s.runId) return st.skip("no run (the previous check failed)");
+      const { workflows, runsUrl } = await json("/api/gtm/workflows");
+      const w = workflows.find((x) => x.name === "record");
+      assert.deepEqual([w.file, w.sourceUrl, runsUrl], ["workflows/record.ts", null, "/api/gtm/inspector"]);
+      const run = (await json("/api/gtm/workflows/runs?workflow=record")).data.find((r) => r.id === s.runId);
+      assert.equal(run.url, `/api/gtm/inspector/run/${s.runId}`);
+      for (const p of [runsUrl, run.url]) {
+        const page = await get(p);
+        assert.equal(page.status, 200, `${p} → ${page.status}: ${page.text.slice(0, 300)}`);
+        assert.match(String(page.headers["content-type"]), /text\/html/, p);
+        const files = [...page.text.matchAll(/(?:href|src)="(\/api\/gtm\/inspector\/assets\/[^"]+)"/g)].map((m) => m[1]);
+        assert.ok(files.some((f) => f.endsWith(".css")) && files.some((f) => f.endsWith(".js")), `${p} links no files under the inspector: ${files}`);
+        for (const f of files) {
+          const r = await get(f);
+          assert.equal(r.status, 200, `${f} → ${r.status}`);
+          // Its stylesheet's fonts are served under the inspector's path too.
+          for (const [, font] of r.text.matchAll(/url\((\/[^)]+\.woff2)\)/g)) {
+            assert.ok(font.startsWith("/api/gtm/inspector/assets/"), `${f} loads ${font}`);
+            assert.equal((await get(font)).status, 200, font);
+          }
+          // As a browser asks for it: compressed, which once closed the file's stream twice (an uncaught error per file).
+          assert.equal((await get(f, { headers: { "accept-encoding": "gzip, br" } })).status, 200, `${f} compressed`);
+        }
+      }
+      assert.doesNotMatch(s.dev.output, /ReadableStream is already closed|ERR_INVALID_STATE/, "serving the inspector's files logged a stream error");
+      // Its page reads and changes runs through one RPC endpoint; on 127.0.0.1 both pass (waking a finished run is a no-op).
+      const rpc = (method) => get("/api/gtm/inspector/api/rpc", { method: "POST", body: { method, params: { runId: s.runId, resolveData: "none" } } });
+      const read = await rpc("fetchRun"), wake = await rpc("wakeUpRun");
+      assert.ok(read.status === 200 && read.text.includes(s.runId), `fetchRun → ${read.status}: ${read.text.slice(0, 300)}`);
+      assert.ok(wake.status === 200 && wake.text.includes("stoppedCount"), `wakeUpRun → ${wake.status}: ${wake.text.slice(0, 300)}`);
+    });
+
     await t.test("the table and the row show in Data", async () => {
       const { tables } = await json("/api/gtm/data");
       const table = tables.find((x) => x.name === "records");
@@ -320,21 +352,61 @@ export async function record(input: { name: string }) {
       const exported = JSON.parse((await get(`/api/gtm/data/records/json?q=${s.marker}`)).text);
       assert.equal(exported[0]?.name, s.marker);
     });
+
+    await t.test("CSV export puts a ' before text a spreadsheet would run as a formula; numbers stay", async () => {
+      const names = ["=1+1", "+SUM(A1)", "-2+3", "@cmd", "\tx", " =HYPERLINK(1)", "-5", "+1.5e3", "plain"];
+      await sql(s.dir, s.dbUrl, `insert into records (name) values ${names.map((_, i) => `($${i + 1})`).join(", ")}`, names);
+      try {
+        const lines = (await get("/api/gtm/data/records/csv?columns=name")).text.split("\n");
+        for (const name of names) {
+          const safe = /^\s*[=+@-]|^\t/.test(name) && !/^[+-][\d.e]+$/.test(name) ? `'${name}` : name;
+          assert.ok(lines.includes(safe), `${JSON.stringify(name)} → ${JSON.stringify(safe)} in ${JSON.stringify(lines)}`);
+        }
+      } finally {
+        await sql(s.dir, s.dbUrl, "delete from records where name = any($1)", [names]);
+      }
+    });
+
+    await t.test("Open database: Drizzle Studio on 127.0.0.1 reads this database, is reused, and goes when gtm dev is killed", async () => {
+      const open = () => get("/api/gtm/database/open", { method: "POST", body: {} });
+      const first = await open();
+      assert.equal(first.status, 200, first.text.slice(0, 500));
+      const { url } = first.json(), port = Number(url.match(/^https:\/\/local\.drizzle\.studio\/\?port=(\d+)$/)?.[1]);
+      assert.ok(port, url);
+      assert.deepEqual((await open()).json(), { url }, "a second press reuses the same Studio");
+      const sockets = devSockets();
+      assertLoopbackOnly(sockets);
+      assert.ok(sockets.some((x) => x.port === port), `Studio (port ${port}) is not in gtm dev's tree: ${JSON.stringify(sockets)}`);
+      // What local.drizzle.studio sends: the row comes back through PGlite's one session.
+      const query = await request(port, "/", { method: "POST", body: { type: "proxy",
+        data: { sql: "select name from records where name = $1", params: [s.marker], method: "all", mode: "object" } } });
+      assert.equal(query.status, 200, query.text.slice(0, 300));
+      assert.ok(query.text.includes(s.marker), query.text.slice(0, 300));
+      assert.ok((await json("/api/gtm/data/records")).total >= 1, "the Console still reads alongside Studio");
+      // Not like Ctrl+C (which signals the whole group): only gtm dev itself, so Studio has to notice on its own.
+      process.kill(s.dev.pid, "SIGTERM");
+      assert.ok(await within(s.dev.exited, MIN), "gtm dev did not exit on SIGTERM");
+      assert.ok(await poll(async () => !(await portOpen(port)), { timeout: 30_000 }), `Studio still answers on ${port} after gtm dev exited`);
+      await stopDev();
+      await startDev();
+    });
   });
 
-test("7.4 Connections: lists .env.example; Save writes .env.local and flips to set; values round-trip; refusals",
+test("7.4 Connections: lists .env.example and declared names; Save writes .env.local and flips to set; values round-trip; add, rename, delete; refusals",
   { timeout: 15 * MIN }, async (t) => {
     if (!ready()) return t.skip("no project (7.1 failed)");
     await ensureDev();
     const example = read(".env.example");
     let add = "\n# Acme CRM API key (acceptance check)\nACME_API_KEY=\n# Acme webhook signing token (acceptance check)\nACME_WEBHOOK_TOKEN=\n";
-    // Refused names listed too, so their refusal is the name rule and not "unlisted".
+    // Refused names listed too, so their refusal is the name rule.
     if (!/^DATABASE_URL=/m.test(example)) add += "# Postgres connection string\nDATABASE_URL=\n";
     if (!/^SLACK_SIGNING_SECRET=/m.test(example)) add += "# Slack signing secret\nSLACK_SIGNING_SECRET=\n";
-    fs.appendFileSync(file(".env.example"), add);
+    fs.appendFileSync(file(".env.example"), `${add}\nACME_BARE_KEY=\n`);
     const origin = { origin: `http://127.0.0.1:${PORT}`, "sec-fetch-site": "same-origin" };
-    const save = (name, value) => get("/api/gtm/connections", { method: "POST", headers: origin, body: { name, value } });
-    const status = async (name) => (await json("/api/gtm/connections")).connections.find((c) => c.name === name);
+    const change = (body) => get("/api/gtm/connections", { method: "POST", headers: origin, body });
+    const save = (name, value) => change({ name, value });
+    const list = async () => (await json("/api/gtm/connections")).connections;
+    const status = async (name) => (await list()).find((c) => c.name === name);
     /** The value as Next would load it from the project's env files (in a fresh process). */
     const loaded = async (name) => {
       const r = assertOk(await run("node", ["-e", `const { loadEnvConfig } = require("@next/env");
@@ -343,12 +415,16 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
       return JSON.parse(r.stdout);
     };
 
-    await t.test("lists the .env.example names with their comments", async () => {
+    await t.test("lists the .env.example names with their comments, the workflows using each, and what can change", async () => {
       const api = await status("ACME_API_KEY");
       assert.ok(api, "ACME_API_KEY listed");
       assert.match(api.description, /Acme CRM API key/);
-      assert.equal(api.set, false);
+      assert.deepEqual([api.set, api.state, api.actions], [false, "missing", ["save", "rename", "delete"]]);
+      if (s.runId) assert.deepEqual(api.usedBy, ["record"], "7.3's record declares ACME_API_KEY");
       assert.equal((await status("ACME_WEBHOOK_TOKEN"))?.set, false);
+      const slack = await status("SLACK_SIGNING_SECRET");
+      assert.deepEqual([slack?.reserved, slack?.actions], [true, []], "a refused name is listed without actions");
+      assert.ok(!(await list()).some((c) => c.name.startsWith("GTM_")), "GTM_* from .env.local is not listed");
     });
 
     const tricky = 'p$ss"wo\\rd$HOME-${PATH}\\z';
@@ -358,22 +434,81 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
         const r = await save(name, value);
         assert.equal(r.status, 200, `Save ${name} → ${r.status}: ${r.text}`);
         assert.equal(r.json().ok, true);
+        assert.ok(!r.text.includes(value), "the value is not echoed");
         assert.match(read(".env.local"), new RegExp(`^${name}=`, "m"));
         assert.ok(await poll(async () => (await status(name))?.set, { timeout: 30_000 }), `${name} never showed as set`);
         assert.equal(await loaded(name), value, `${name} round-trip through @next/env`);
       }
+      assert.equal(fs.statSync(file(".env.local")).mode & 0o777, 0o600, ".env.local is owner-only");
     });
 
-    await t.test("Save refuses DATABASE_URL, SLACK_SIGNING_SECRET, an unlisted name and a multi-line value", async () => {
-      const before = read(".env.local");
-      for (const [name, value] of [["DATABASE_URL", "postgres://x@db.example/x"], ["SLACK_SIGNING_SECRET", "abc"],
-        ["NOT_IN_ENV_EXAMPLE", "abc"], ["ACME_API_KEY", "line1\nline2"]]) {
-        const r = await save(name, value);
-        assert.ok(r.status >= 400 && r.status < 500, `Save ${name}=${JSON.stringify(value)} → ${r.status}: ${r.text}`);
+    await t.test("Add appends the name and label to .env.example; rename rewrites or inserts the comment; delete removes both", async () => {
+      const r = await change({ action: "save", name: "ACME_NEW_KEY", value: "new-$value", label: "Acme new (acceptance)" });
+      assert.equal(r.status, 200, r.text);
+      assert.match(read(".env.example"), /^# Acme new \(acceptance\)\nACME_NEW_KEY=\n/m);
+      assert.match(read(".env.local"), /^ACME_NEW_KEY='new-\\\$value'$/m);
+      assert.ok(await poll(async () => (await status("ACME_NEW_KEY"))?.set, { timeout: 30_000 }), "ACME_NEW_KEY never showed as set");
+      assert.equal((await status("ACME_NEW_KEY")).description, "Acme new (acceptance)");
+      const envLocal = read(".env.local");
+      assert.equal((await change({ action: "rename", name: "ACME_NEW_KEY", label: "Acme renamed" })).status, 200);
+      assert.match(read(".env.example"), /^# Acme renamed\nACME_NEW_KEY=$/m);
+      assert.ok(!read(".env.example").includes("Acme new (acceptance)"), "the old comment is replaced");
+      assert.equal(read(".env.local"), envLocal, "rename leaves .env.local alone");
+      assert.equal((await change({ action: "rename", name: "ACME_BARE_KEY", label: "Acme bare" })).status, 200);
+      assert.match(read(".env.example"), /\n\n# Acme bare\nACME_BARE_KEY=\n/, "a comment is inserted above a bare name");
+      const deleted = await change({ action: "delete", name: "ACME_NEW_KEY" });
+      assert.equal(deleted.status, 200, deleted.text);
+      assert.ok(!/ACME_NEW_KEY|Acme renamed/.test(read(".env.example")), "name and comment gone from .env.example");
+      assert.ok(!read(".env.local").includes("ACME_NEW_KEY"), "gone from .env.local");
+      assert.ok(!(await list()).some((c) => c.name === "ACME_NEW_KEY"), "gone from the list");
+      assert.equal(await loaded("ACME_API_KEY"), tricky, "other lines kept");
+      assert.match(read(".env.example"), /# Acme CRM API key \(acceptance check\)\nACME_API_KEY=/, "other names kept");
+      assert.equal((await change({ action: "delete", name: "ACME_NEVER_LISTED" })).status, 404);
+      assert.ok(!fs.readdirSync(s.dir).some((f) => f.startsWith(".env.gtm-")), "no temp files left");
+    });
+
+    await t.test("delete and Save drop every line of a multiline value written outside the Console, and only that entry", async () => {
+      // A neighbour's multiline value that mentions the key must stay as it is.
+      fs.appendFileSync(file(".env.example"), "# Acme multiline (acceptance)\nACME_MULTI_KEY=\n# Acme second multiline (acceptance)\nACME_MULTI_TWO=\n");
+      fs.appendFileSync(file(".env.local"), 'ACME_MULTI_KEY="multi-first\nmulti-second-line"\n' +
+        "ACME_NOTE=`note\nACME_MULTI_KEY=not-an-entry\nend`\nACME_MULTI_TWO='two-first\ntwo-second-line'\n");
+      assert.equal(await loaded("ACME_MULTI_KEY"), "multi-first\nmulti-second-line", "the multiline value loads before the change");
+      const deleted = await change({ action: "delete", name: "ACME_MULTI_KEY" });
+      assert.equal(deleted.status, 200, deleted.text);
+      assert.equal((await change({ name: "ACME_MULTI_TWO", value: "two-new" })).status, 200);
+      const local = read(".env.local");
+      assert.ok(!/multi-first|multi-second-line|two-first|two-second-line/.test(local), `an old value stayed:\n${local.replace(/=.*/g, "=…")}`);
+      assert.match(local, /^ACME_MULTI_TWO='two-new'$/m);
+      assert.equal(await loaded("ACME_NOTE"), "note\nACME_MULTI_KEY=not-an-entry\nend", "the neighbour's value is kept whole");
+      assert.equal(await loaded("ACME_MULTI_KEY"), null);
+      assert.equal(await loaded("ACME_API_KEY"), tricky, "other lines kept");
+      // A quoted value ending in \ (dotenv reads \' as the closing quote when no later one fits): a neighbour's, then the deleted key's own.
+      const original = read(".env.local");
+      for (const [extra, kept] of [[`ACME_NOTE2='ends\\'\nACME_MULTI_KEY="multi-first\nmulti-second-line"\nACME_KEEP=keep\n`, { ACME_NOTE2: "ends\\", ACME_KEEP: "keep" }],
+        [`ACME_MULTI_KEY='multi-first\\'\nACME_KEEP='ok'\nACME_TAIL=preserve\n`, { ACME_KEEP: "ok", ACME_TAIL: "preserve" }]]) {
+        fs.writeFileSync(file(".env.local"), original + extra);
+        fs.appendFileSync(file(".env.example"), "ACME_MULTI_KEY=\n");
+        for (const [name, value] of Object.entries(kept)) assert.equal(await loaded(name), value, `${name} before the delete`);
+        assert.equal((await change({ action: "delete", name: "ACME_MULTI_KEY" })).status, 200);
+        assert.ok(!/multi-first|multi-second-line/.test(read(".env.local")), "an old value stayed");
+        assert.equal(await loaded("ACME_MULTI_KEY"), null);
+        for (const [name, value] of Object.entries(kept)) assert.equal(await loaded(name), value, `${name} after the delete`);
+      }
+      fs.writeFileSync(file(".env.local"), original);
+    });
+
+    await t.test("refuses DATABASE_URL, SLACK_SIGNING_SECRET, GTM_*, a bad key, multi-line values, redeploy and unknown actions", async () => {
+      const before = [read(".env.local"), read(".env.example")];
+      for (const body of [{ name: "DATABASE_URL", value: "postgres://x@db.example/x" }, { name: "SLACK_SIGNING_SECRET", value: "abc" },
+        { action: "delete", name: "SLACK_SIGNING_SECRET" }, { action: "rename", name: "GTM_PORT", label: "x" }, { name: "1BAD", value: "abc" },
+        { name: "ACME_API_KEY", value: "line1\nline2" }, { action: "rename", name: "ACME_API_KEY", label: "two\nlines" },
+        { action: "redeploy" }, { action: "drop", name: "ACME_API_KEY" }]) {
+        const r = await change(body);
+        assert.ok(r.status >= 400 && r.status < 500, `${JSON.stringify(body)} → ${r.status}: ${r.text}`);
         assert.equal(r.json().ok, false);
         assert.equal(typeof r.json().error, "string");
       }
-      assert.equal(read(".env.local"), before, ".env.local unchanged by refused saves");
+      assert.deepEqual([read(".env.local"), read(".env.example")], before, "files unchanged by refused changes");
       assert.equal(await loaded("ACME_API_KEY"), tricky);
     });
   });
@@ -400,10 +535,14 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       const r = await get(`/api/gtm/start/${workflow}`, { method: "POST", headers, body: { name: "evil" } });
       assert.equal(r.status, 403, `${JSON.stringify(headers)} → ${r.status}: ${r.text.slice(0, 300)}`);
       // The same guard covers every route (§3): Save and the Workflow SDK's own endpoint.
-      const envLocal = exists(".env.local") ? read(".env.local") : null;
-      const save = await get("/api/gtm/connections", { method: "POST", headers, body: { name: "ACME_API_KEY", value: "evil" } });
-      assert.equal(save.status, 403, `Save ${JSON.stringify(headers)} → ${save.status}`);
-      assert.equal(exists(".env.local") ? read(".env.local") : null, envLocal, ".env.local unchanged");
+      const files = () => [".env.local", ".env.example"].map((f) => (exists(f) ? read(f) : null)), before = files();
+      for (const body of [{ name: "ACME_API_KEY", value: "evil" }, { action: "delete", name: "ACME_API_KEY" }, { action: "rename", name: "ACME_API_KEY", label: "evil" }]) {
+        const r = await get("/api/gtm/connections", { method: "POST", headers, body });
+        assert.equal(r.status, 403, `Connections ${body.action ?? "save"} ${JSON.stringify(headers)} → ${r.status}`);
+      }
+      assert.deepEqual(files(), before, ".env.local and .env.example unchanged");
+      const studio = await get("/api/gtm/database/open", { method: "POST", headers, body: {} });
+      assert.equal(studio.status, 403, `Open database ${JSON.stringify(headers)} → ${studio.status}`);
       const flow = await get("/.well-known/workflow/v1/flow", { method: "POST", headers, body: {} });
       assert.equal(flow.status, 403, `workflow flow route ${JSON.stringify(headers)} → ${flow.status}`);
     }
@@ -445,6 +584,7 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       env: cleanEnv({
         VERCEL_ENV: "production", VERCEL_DEPLOYMENT_ID: "dpl_test", VERCEL_AUTOMATION_BYPASS_SECRET: "s",
         DATABASE_URL: s.dbUrl, NODE_EXTRA_CA_CERTS: stub.caFile,
+        VERCEL_GIT_PROVIDER: "github", VERCEL_GIT_REPO_OWNER: "acme", VERCEL_GIT_REPO_SLUG: "gtm-acme", VERCEL_GIT_COMMIT_SHA: "0a1b2c3",
       }),
     });
     try {
@@ -456,6 +596,16 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
       assert.ok(probes > 0, "the proxy never requested /_gtm/probe.txt");
       st.diagnostic(`probe requests answered 401 by the stub: ${probes}`);
       assert.equal((await at("/data")).status, 200, "control: /data without bypass");
+      // No GTM_VERCEL_TOKEN or NEON_PROJECT_ID: Vercel's deep link to the project's Storage tab.
+      const database = (await at("/api/gtm/database")).json();
+      assert.deepEqual([database.mode, database.label], ["link", "Open in Vercel"], JSON.stringify(database));
+      assert.ok(database.url.startsWith("https://vercel.com/d?to=") && database.url.includes("%2Fstores"), database.url);
+      refused(await request(START_PORT, "/api/gtm/database/open", { method: "POST", host, body: {} }), "hosted Open database POST");
+      // Hosted, runs open in Vercel's dashboard (its team and project picker without GTM_VERCEL_TOKEN), sources on GitHub.
+      assert.equal((await at("/api/gtm/inspector")).status, 404, "the run inspector is local only");
+      const hosted = (await at("/api/gtm/workflows")).json(), record = hosted.workflows.find((w) => w.name === "record");
+      assert.match(hosted.runsUrl, /^https:\/\/vercel\.com\/d\?to=%2F%5Bteam%5D%2F%5Bproject%5D%2Fworkflows/);
+      if (s.runId) assert.equal(record?.sourceUrl, "https://github.com/acme/gtm-acme/blob/0a1b2c3/workflows/record.ts");
       const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
       const jwt = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ aud: host, bypass: "s", iat: 1, sub: "protection-bypass-automation" })}.sig`;
       const carriers = [
@@ -464,10 +614,92 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
         ["query parameter", (p) => at(`${p}${p.includes("?") ? "&" : "?"}x-vercel-protection-bypass=s`)],
         ["bypass cookie", (p) => at(p, { cookie: `_vercel_jwt=${jwt}` })],
       ];
-      const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=AGENTS.md",
+      const targets = ["/data", "/context", "/runs", "/", "/api/gtm/shell", "/api/gtm/context", "/api/gtm/context/file?path=context/company.md",
         "/api/gtm/workflows", "/api/gtm/workflows/runs", "/api/gtm/data", "/api/gtm/data/records", "/api/gtm/data/records/csv",
-        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x"];
+        "/api/gtm/data/records/json", "/api/gtm/connections", "/api/gtm/release?id=dpl_x", "/api/gtm/inspector", "/api/gtm/database"];
       for (const [how, send] of carriers) for (const p of targets) refused(await send(p), `${how} on ${p}`);
+    } finally {
+      await next.stop();
+      await stub.close();
+    }
+  });
+
+  await t.test("hosted Connections against a stubbed Vercel: list, save, rename, delete, redeploy, read-only rows; owner session and CSRF required", async () => {
+    // The same build as above. The stub plays the production domain's login wall (the probe answers 200 only with the
+    // owner's cookie) and the Vercel API, which test/vercel-fetch.mjs points the app's calls at.
+    const host = `127.0.0.1:${PROBE_PORT}`, b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const owner = `_vercel_jwt=${b64({ alg: "HS256" })}.${b64({ userId: "u1", ownerId: "team_test", aud: "127.0.0.1", sub: "sso-protection" })}.sig`;
+    const { state, handler } = vercelStub({ cookie: owner });
+    state.envs.push(
+      { id: "env_hub", key: "HUBSPOT_TOKEN", type: "sensitive", target: ["production"], comment: "HubSpot" },
+      { id: "env_openai", key: "OPENAI_API_KEY", type: "encrypted", target: ["production", "preview"] },
+      { id: "env_redis", key: "UPSTASH_REDIS_REST_TOKEN", type: "encrypted", target: ["production"], configurationId: "icfg_1" },
+      { id: "env_preview", key: "PREVIEW_ONLY_KEY", type: "encrypted", target: ["preview"] },
+      { id: "env_gtm", key: "GTM_VERCEL_TOKEN", type: "sensitive", target: ["production"] },
+    );
+    const stub = await httpsStub(s.work, PROBE_PORT, handler);
+    const next = startProcess(file("node_modules/.bin/next"), ["start", "-H", "127.0.0.1", "-p", String(START_PORT)], {
+      cwd: s.dir, name: "next-start-connections",
+      env: cleanEnv({
+        VERCEL_ENV: "production", VERCEL_DEPLOYMENT_ID: "dpl_test", VERCEL_PROJECT_ID: "prj_test", VERCEL_PROJECT_PRODUCTION_URL: host,
+        GTM_VERCEL_TOKEN: "tok_test", DATABASE_URL: s.dbUrl, NODE_EXTRA_CA_CERTS: stub.caFile,
+        NODE_OPTIONS: `--import ${path.join(REPO, "test", "vercel-fetch.mjs")}`, GTM_TEST_VERCEL_API: `https://${host}`,
+      }),
+    });
+    const writes = () => state.calls.filter((c) => !c.startsWith("GET ")).length;
+    try {
+      await waitForHttp(START_PORT, "/_gtm/probe.txt", next);
+      const at = (p, { headers = {}, ...opts } = {}) => request(START_PORT, p, { host, ...opts, headers: { cookie: owner, ...headers } });
+      const listed = await at("/api/gtm/connections");
+      assert.equal(listed.status, 200, listed.text.slice(0, 300));
+      const { connections, save, settingsUrl } = listed.json(), row = (name) => connections.find((c) => c.name === name);
+      assert.equal(save.mode, "hosted", JSON.stringify(save));
+      assert.equal(settingsUrl, "https://vercel.com/acme/gtm-acme/settings/environment-variables");
+      assert.deepEqual([row("HUBSPOT_TOKEN")?.description, row("HUBSPOT_TOKEN")?.state, row("HUBSPOT_TOKEN")?.actions], ["HubSpot", "saved", ["save", "rename", "delete"]]);
+      for (const name of ["OPENAI_API_KEY", "UPSTASH_REDIS_REST_TOKEN"]) assert.deepEqual([row(name)?.state, row(name)?.actions], ["readonly", []], name);
+      assert.ok(!row("PREVIEW_ONLY_KEY") && !row("GTM_VERCEL_TOKEN"), "preview-only and refused variables are not listed");
+      assert.deepEqual(row("ACME_API_KEY")?.actions, ["save"], ".env.example names can be saved; there is nothing in Vercel to rename");
+
+      const headers = { origin: `https://${host}`, "sec-fetch-site": "same-origin", "x-gtm-csrf": save.csrf };
+      const post = (body, h = headers) => at("/api/gtm/connections", { method: "POST", headers: h, body });
+      const body = { action: "save", name: "ACME_NEW_KEY", value: "hosted-value-1", label: "Acme new" };
+      for (const [what, h] of [["no CSRF token", { ...headers, "x-gtm-csrf": "" }], ["a foreign Origin", { ...headers, origin: "https://evil.test" }],
+        ["cross-site", { ...headers, "sec-fetch-site": "cross-site" }], ["no owner session", { ...headers, cookie: "" }]]) {
+        refused(await post(body, h), `save with ${what}`);
+      }
+      assert.equal((await request(START_PORT, "/api/gtm/connections", { host })).json().save.mode, "off", "no session: changes off");
+      assert.equal(writes(), 0, "refused requests wrote nothing to Vercel");
+
+      const saved = await post(body);
+      assert.equal(saved.status, 200, saved.text);
+      assert.deepEqual([saved.json().redeploy, saved.json().id], ["started", "dpl_new1"]);
+      assert.ok(!saved.text.includes("hosted-value-1"), "the value is not echoed");
+      assert.equal(state.values.ACME_NEW_KEY, "hosted-value-1");
+      assert.deepEqual(state.envs.find((e) => e.key === "ACME_NEW_KEY"), { id: "env_ACME_NEW_KEY", key: "ACME_NEW_KEY", type: "sensitive", target: ["production"], comment: "Acme new" });
+      assert.equal((await at("/api/gtm/release?id=dpl_new1")).json().release?.state, "live");
+
+      const deploys = () => state.calls.filter((c) => c === "POST /v13/deployments").length, before = deploys();
+      assert.equal((await post({ action: "rename", name: "HUBSPOT_TOKEN", label: "HubSpot (Production)" })).status, 200);
+      assert.equal(state.envs.find((e) => e.key === "HUBSPOT_TOKEN").comment, "HubSpot (Production)");
+      assert.equal(deploys(), before, "a rename redeploys nothing");
+      const deleted = await post({ action: "delete", name: "HUBSPOT_TOKEN" });
+      assert.deepEqual([deleted.status, deleted.json().redeploy], [200, "started"]);
+      assert.ok(!state.envs.some((e) => e.key === "HUBSPOT_TOKEN"), "HUBSPOT_TOKEN deleted");
+
+      for (const [b, status] of [[{ name: "OPENAI_API_KEY", value: "x" }, 409], [{ action: "delete", name: "UPSTASH_REDIS_REST_TOKEN" }, 409],
+        [{ action: "rename", name: "ACME_API_KEY", label: "x" }, 404], [{ name: "AI_GATEWAY_API_KEY", value: "x" }, 400], [{ name: "GTM_X", value: "x" }, 400]]) {
+        const r = await post(b);
+        assert.equal(r.status, status, `${JSON.stringify(b)} → ${r.status}: ${r.text}`);
+      }
+
+      state.redeploy = "fail";
+      const failed = await post({ name: "ACME_NEW_KEY", value: "hosted-value-2" });
+      assert.deepEqual([failed.status, failed.json().redeploy], [200, "failed"], failed.text);
+      state.redeploy = "ok";
+      const upserts = () => state.calls.filter((c) => c === "POST /v10/projects/prj_test/env").length, sent = upserts();
+      const retried = await post({ action: "redeploy" });
+      assert.deepEqual([retried.status, retried.json().redeploy], [200, "started"], retried.text);
+      assert.equal(upserts(), sent, "Redeploy sends no value");
     } finally {
       await next.stop();
       await stub.close();
@@ -476,8 +708,11 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
 
   await t.test(`GTM_ALLOWED_HOSTS=${BOX}: that host is admitted, but start and runs are refused on it`, async () => {
     await stopDev();
-    await startDev({ GTM_ALLOWED_HOSTS: BOX });
+    // A key the shell sets wins over .env.local; gtm dev names it so Connections can say so.
+    await startDev({ GTM_ALLOWED_HOSTS: BOX, ACME_WEBHOOK_TOKEN: "from-shell" });
     try {
+      const shellRows = (await json("/api/gtm/connections")).connections.filter((c) => c.shell).map((c) => c.name);
+      assert.deepEqual(shellRows, ["ACME_WEBHOOK_TOKEN"], "only the shell's key is marked");
       assert.equal((await get("/context", { host: BOX })).status, 200, `/context on ${BOX}`);
       assert.equal((await get("/api/gtm/shell", { host: BOX })).status, 200, `/api/gtm/shell on ${BOX}`);
       const before = await runsCount();
@@ -486,8 +721,39 @@ test("7.8 guards and safety", { timeout: 60 * MIN }, async (t) => {
         assert.equal(r.status, 403, `start on ${BOX} ${JSON.stringify(headers)} → ${r.status}: ${r.text.slice(0, 300)}`);
       }
       if (s.runId) refused(await get(`/api/gtm/runs/${s.runId}`, { host: BOX }), `runs on ${BOX}`);
+      // The run inspector reads on that host, but every RPC that changes runs or hands out secrets is refused.
+      if (s.runId) {
+        assert.equal((await get(`/api/gtm/inspector/run/${s.runId}`, { host: BOX })).status, 200, `the inspector on ${BOX}`);
+        const rpc = (body, headers) => get("/api/gtm/inspector/api/rpc", { method: "POST", host: BOX, headers, body });
+        // A read answers { success, data }; `npm run build` above emptied the local run store, so the list may be empty.
+        const answered = (r, what) => assert.ok(r.status === 200 && r.text.includes("data") && !r.text.includes("error"),
+          `${what} on ${BOX} → ${r.status}: ${r.text.slice(0, 300)}`);
+        answered(await rpc({ method: "fetchRuns", params: { params: { limit: 5 } } }), "fetchRuns (JSON)");
+        for (const method of ["recreateRun", "cancelRun", "bulkCancelRuns", "reenqueueRun", "wakeUpRun", "resumeHook", "runHealthCheck",
+          "fetchHookToken", "getEncryptionKeyForRun", "noSuchMethod"]) {
+          const r = await rpc({ method, params: { runId: s.runId, runIds: [s.runId] } });
+          refused(r, `${method} on ${BOX}`);
+          assert.match(r.text, /127\.0\.0\.1 or localhost/, `${method}: the refusal says where it works`);
+        }
+        // CBOR, as the inspector's page sends it: a read passes; a read and then a write under the same key does not.
+        const text = (x) => Buffer.concat([Buffer.from([0x60 + x.length]), Buffer.from(x)]);
+        const cbor = { "content-type": "application/cbor" };
+        answered(await rpc(Buffer.concat([Buffer.from([0xa1]), text("method"), text("fetchRuns")]), cbor), "fetchRuns (CBOR)");
+        refused(await rpc(Buffer.concat([Buffer.from([0xa2]), text("method"), text("fetchRuns"), text("method"), text("recreateRun")]), cbor),
+          `CBOR with a second method on ${BOX}`);
+      }
+      // The Workflow SDK's own run endpoints answer only this server's queue on 127.0.0.1.
+      for (const [what, opts] of [[`Host ${BOX}`, { host: BOX }], [`X-Forwarded-Host ${BOX}`, { headers: { "x-forwarded-host": BOX } }]]) {
+        const r = await get("/.well-known/workflow/v1/flow", { method: "POST", body: {}, ...opts });
+        assert.equal(r.status, 404, `the workflow flow route with ${what} → ${r.status}`);
+      }
       assert.equal(await runsCount(), before);
       refused(await get("/context", { host: "evil.test" }), "evil.test still refused");
+      // Not this machine's Tailscale name (or no Tailscale at all): Studio is not shared there, the answer says where it opens.
+      const studio = await get("/api/gtm/database/open", { method: "POST", host: BOX,
+        headers: { origin: `https://${BOX}`, "sec-fetch-site": "same-origin", "tailscale-user-login": "owner@example.com" }, body: {} });
+      assert.equal(studio.status, 409, `Open database on ${BOX} → ${studio.status}: ${studio.text.slice(0, 300)}`);
+      assert.match(studio.json().error, /computer running gtm dev/);
     } finally {
       await stopDev();
       await startDev();
@@ -557,6 +823,9 @@ loadEnvConfig(process.cwd(), false, { info() {}, error() {} }, true);
         [new URL(s.dbUrl).hostname]);
       try {
         expectRefused(await viaDb(), "db()");
+        const studio = await get("/api/gtm/database/open", { method: "POST", body: {} });
+        assert.equal(studio.status, 409, `Open database on a stamped database → ${studio.status}: ${studio.text.slice(0, 300)}`);
+        assert.match(studio.text, PRODUCTION_DB);
         expectRefused(await gtm(["migrate"]), "gtm migrate (gtm dev holding the database)");
         fs.appendFileSync(envLocal, "\nVERCEL_ENV=production\n");
         expectRefused(await viaDb(), "db() with VERCEL_ENV=production in .env.local");
@@ -658,7 +927,7 @@ test("7.6 gtm init --slack: builds with withEve; only adds agent/** and the eve 
     t.diagnostic(`eve build --skip-sandbox-prewarm: exit ${eveBuild.code} (log ${eveBuild.log})${eveBuild.code ? `\n${tail(eveBuild.output, 1500)}` : ""}`);
   });
 
-test("7.9 init --example builds, gtm check passes and the example runs; the docs recipes install, migrate, build and run",
+test("7.9 init --example builds, gtm check passes and the example runs; the docs recipes install, migrate, build and run; an agent() skill",
   { timeout: 40 * MIN }, async (t) => {
     if (!s.cli) return t.skip("no CLI (packing failed)");
     await stopDev();
@@ -669,7 +938,12 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
       assert.ok(ready(), "init did not install the package");
       assertOk(await npm(["run", "build"]), "npm run build with the example");
       assertOk(await gtm(["check"]), "gtm check with the example");
-      await startDev();
+      // A stand-in `claude` that replies with the prompt it got, so agent()'s CLI path runs with no network.
+      const fakeBin = path.join(s.work, "fake-bin");
+      fs.mkdirSync(fakeBin, { recursive: true });
+      fs.writeFileSync(path.join(fakeBin, "claude"), "#!/usr/bin/env node\nlet t = \"\"; process.stdin.on(\"data\", (d) => (t += d)).on(\"end\", () =>\n" +
+        "  console.log(JSON.stringify({ result: `${t}\\nARGS ${process.argv.slice(2).join(\" \")}`, total_cost_usd: 0, num_turns: 1 })));\n", { mode: 0o755 });
+      await startDev({ PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`, GTM_AGENT_BACKEND: "claude" });
       const example = assertOk(await gtm(["run", "example-import"], { env: { GTM_PORT: String(PORT) } }), "gtm run example-import");
       assert.match(example.stdout, /"saved":\s*3/, `the example saved its three samples:\n${example.output}`);
       assert.ok((await json("/api/gtm/data")).tables.some((x) => x.name === "example_companies"), "example_companies shows in Data");
@@ -684,6 +958,18 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
         imports += `${readme.match(/import \{ \w+ \} from "\.\/[\w-]+";/)[0]}\n`;
         entries += `${readme.match(/```ts\n([\s\S]*?)\n```/)[1]}\n`;
       }
+      // A company skill (layout.md) and a workflow stage that loads it.
+      write(".agents/skills/email-copywriting/SKILL.md", "---\nname: email-copywriting\ndescription: Writes cold emails in Demo's voice.\n---\n\n# Email copywriting\n\nKeep it under 90 words.\n");
+      write("workflows/skill-check.ts", `import { agent } from "@eliasstravik/gtm/ai";
+
+/** Acceptance check 7.9: an agent() stage with company skills. */
+export async function skillCheck(input: { skills: string[] }) {
+  "use workflow";
+  return (await agent({ name: "skillCheck", instructions: "Follow the skill.", prompt: "Draft one line.", skills: input.skills, model: "anthropic/claude-sonnet-5.5" })).value;
+}
+`);
+      imports += `import { skillCheck } from "./skill-check";\n`;
+      entries += `"skill-check": skillCheck,\n`;
       const registry = read("workflows/index.ts");
       write("workflows/index.ts", imports + registry.replace("export const workflows = {\n", `export const workflows = {\n${entries}`));
       write("vercel.json", JSON.stringify({ crons: [{ path: "/api/gtm/cron/weekly-new-companies", schedule: "0 7 * * 1" }] }, null, 2));
@@ -702,7 +988,23 @@ test("7.9 init --example builds, gtm check passes and the example runs; the docs
       assert.match(weekly.stdout, /"companies":\s*2/, weekly.output);
       const tables = (await json("/api/gtm/data")).tables.map((x) => x.name);
       for (const table of ["companies", "company_profiles", "weekly_new_companies"]) assert.ok(tables.includes(table), `${table} in Data: ${tables}`);
+
+      const skills = (await json("/api/gtm/context")).groups.find((g) => g.name === "Skills").files;
+      assert.deepEqual(skills, [{ path: ".agents/skills/email-copywriting/SKILL.md", title: "email-copywriting", description: "Writes cold emails in Demo's voice." }]);
+      const skilled = assertOk(await gtm(["run", "skill-check", "--input", JSON.stringify({ skills: ["email-copywriting"] })], { env: { GTM_PORT: String(PORT) } }), "gtm run skill-check");
+      assert.match(skilled.stdout, /Follow the skill\.\\n\\n# Email copywriting\\n\\nKeep it under 90 words\./, `the skill's body joins the instructions:\n${skilled.stdout}`);
+      assert.doesNotMatch(skilled.stdout, /description: Writes/, "without its front matter");
+      assert.match(skilled.stdout, /ARGS .*--model claude-sonnet-5-5/, "the stage's model goes to claude");
+      const missing = await gtm(["run", "skill-check", "--input", JSON.stringify({ skills: ["no-such-skill"] })], { env: { GTM_PORT: String(PORT) } });
+      assert.notEqual(missing.code, 0, missing.output);
+      assert.match(missing.output, /No skill \\?"no-such-skill\\?"/, missing.output);
       await stopDev();
+      // Every AI call goes through agent(): gtm check flags the AI SDK in workflow code.
+      write("workflows/direct.ts", `import { generateText } from "ai";\nexport const model = "openai/gpt-6";\nexport { generateText };\n`);
+      const flagged = await gtm(["check"]);
+      assert.notEqual(flagged.code, 0, flagged.output);
+      assert.match(flagged.output, /workflows\/direct\.ts imports "ai"[\s\S]*workflows\/direct\.ts names the model "openai\/gpt-6"/, flagged.output);
+      fs.rmSync(file("workflows/direct.ts"));
       // enrich-companies needs a model to run; its build (types included) is checked here.
       assertOk(await npm(["run", "build"]), "npm run build with the recipes");
       assertOk(await gtm(["check"]), "gtm check with the recipes");

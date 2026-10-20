@@ -24,8 +24,9 @@ Gateway. Nothing is hosted by us; the keys and services are the company's own.
 
 ## What you get
 
-One repo per company, named `gtm-<company>` (`gtm-acme`): `context/` (Markdown), `workflows/` (the registry in
-`workflows/index.ts`), `db/` (workflow-owned tables), `app/` (the Console and webhooks), `AGENTS.md` with a managed
+One repo per company, named `gtm-<company>` (`gtm-acme`): `context/` (Markdown), `.agents/skills/` (the company's
+skills, one `<name>/SKILL.md` each, for Claude Code, Codex, the Slack agent and workflow `agent()` steps),
+`workflows/` (the registry in `workflows/index.ts`), `db/` (workflow-owned tables), `app/` (the Console and webhooks), `AGENTS.md` with a managed
 block, `.env.example` listing every connection, and `vercel.json` for schedules. The full layout is in
 [docs/layout.md](docs/layout.md); the template itself is [starter/](starter/).
 

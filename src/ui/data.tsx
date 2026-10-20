@@ -1,10 +1,11 @@
 "use client";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ColumnChooser } from "./column-chooser.js";
-import { Search, Status, time, useApi, useQuery } from "./load.js";
+import { api, Search, Status, time, useApi, useQuery } from "./load.js";
 import "./data.css";
 
 type Page = { table: string; fields: { name: string; type: string }[]; columns: string[]; pinned: string | null; rows: unknown[][]; offset: number; total: number };
+type Database = { mode: "local" } | { mode: "link"; url: string | null; label: string; title: string };
 
 /** Columns that carry a verdict: the grid shows them right after the name. */
 const SCORE = /(^|_)(score|verdict|priority|tier|fit|grade|rating)$/i;
@@ -135,7 +136,7 @@ function useRows(view: string | null, box: RefObject<HTMLDivElement | null>) {
 /** Data: any table (or only a workflow's `tables`) as a read-only grid, with search, one filter, sort, column choice and export. */
 export function DataView({ tables: only }: { tables?: string[] }) {
   const { params, go } = useQuery();
-  const tables = useApi<{ tables: { name: string }[] }>("data");
+  const tables = useApi<{ tables: { name: string }[] }>("data"), database = useApi<Database>("database").data;
   const names = tables.data?.tables.map((t) => t.name).filter((n) => !only || only.includes(n)) ?? [];
   const table = params.get("table") ?? names[0];
   const filters = new URLSearchParams(FILTERS.flatMap((k) => (params.has(k) ? [[k, params.get(k)!]] : [])));
@@ -177,6 +178,19 @@ export function DataView({ tables: only }: { tables?: string[] }) {
       setExporting(false);
     }
   }
+  // Locally: Drizzle Studio on this computer's database. The tab opens first, so no popup blocker stops it.
+  async function openDatabase() {
+    const tab = window.open("", "_blank");
+    setMessage("Opening the database…");
+    try {
+      const { url } = await api<{ url: string }>("database/open", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (tab) { tab.opener = null; tab.location.href = url; } else location.assign(url);
+      setMessage("");
+    } catch (e) {
+      tab?.close();
+      setMessage((e as Error).message);
+    }
+  }
   const cellAt = (row: number, column: number) => grid.current?.querySelector<HTMLElement>(`[data-row="${row}"][data-column="${column}"]`);
   useLayoutEffect(() => {
     const target = focusAfterDraw.current && cellAt(...focusAfterDraw.current);
@@ -201,12 +215,18 @@ export function DataView({ tables: only }: { tables?: string[] }) {
     if (target) target.focus();
     else { focusAfterDraw.current = to; list.reveal(to[0]); }
   }
+  const openButton = database?.mode === "local" ? <button type="button" className="end" onClick={openDatabase}
+    title="Drizzle Studio on this computer's database, for full editing. This view is a preview.">Open database ↗</button>
+    : database?.mode === "link" && database.url ? <a className="button end" href={database.url} target="_blank"
+      rel="noopener noreferrer" title={database.title}>{database.label} ↗</a> : null;
   const cell = selected && list.rows.has(selected[0]) ? selected : null, span = cols.length + 1, sort = params.get("sort"), desc = params.get("order") === "desc";
   return (
     <>
       {!only && <div className="title-row"><h1>Data</h1></div>}
       <section className="pane data-pane" aria-label="Data">
         <Status state={!tables.data ? tables : { ...list.state, data: page, loading: !page && list.state.loading }} />
+        {/* A new project has no tables yet but still gets the database button. */}
+        {tables.data && !names.length && openButton && <div className="toolbar">{openButton}</div>}
         {tables.data && !names.length && <p className="notice">{only ? "No configured data for this workflow." : "No tables yet. Workflows keep their results in their own tables."}</p>}
         {head && (
           <>
@@ -231,6 +251,7 @@ export function DataView({ tables: only }: { tables?: string[] }) {
               <button type="button" disabled={exporting || !list.total} onClick={() => download("json")}>Export JSON</button>
               {cell && <button type="button" onClick={() => copy(value(cell))}>Copy cell</button>}
               {cell && <button type="button" onClick={(e) => { origin.current = e.currentTarget; setDetail(value(cell)); dialog.current?.showModal(); }}>View value</button>}
+              {openButton}
             </div>
             {page && <><div className="table-scroll" ref={box}>
               <table ref={grid} className="data-grid" role="grid" aria-label={table} aria-readonly="true" aria-rowcount={list.total + 1}
