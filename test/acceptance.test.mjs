@@ -1005,6 +1005,8 @@ export async function skillCheck(input: { skills: string[] }) {
       assert.notEqual(flagged.code, 0, flagged.output);
       assert.match(flagged.output, /workflows\/direct\.ts imports "ai"[\s\S]*workflows\/direct\.ts names the model "openai\/gpt-6"/, flagged.output);
       fs.rmSync(file("workflows/direct.ts"));
+      // Commented out, it is not code: check passes below.
+      write("workflows/notes.ts", `// Previous implementation: import { generateText } from "ai";\n/* model: "openai/gpt-6" */\nexport {};\n`);
       // enrich-companies needs a model to run; its build (types included) is checked here.
       assertOk(await npm(["run", "build"]), "npm run build with the recipes");
       assertOk(await gtm(["check"]), "gtm check with the recipes");
