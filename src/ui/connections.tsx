@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { onReleaseSettled, releaseStarted } from "./environment.js";
 import { api, Link, Status, useApi } from "./load.js";
+import { glyphs, Icon } from "./menu.js";
 import "./connections.css";
 
 type State = "set" | "missing" | "saved" | "provided" | "readonly";
@@ -12,16 +13,14 @@ type Data = { connections: Connection[]; environment: string; save: Save; tokenW
   settingsUrl: string | null; usageComplete: boolean };
 type Done = { ok: true; status: string; id?: string; redeploy?: "started" | "skipped" | "failed"; shell?: boolean };
 type Open = { kind: "add" | "edit" | "delete"; c?: Connection };
-/** Heroicons 16 solid: check-circle, x-circle, clock, lock-closed, arrow-path, ellipsis-horizontal. */
+/** Heroicons 16 solid: check-circle, x-circle, clock, lock-closed, and the shared refresh and more. */
 const icons = {
   set: "M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm3.844-8.791a.75.75 0 0 0-1.188-.918l-3.7 4.79-1.649-1.833a.75.75 0 1 0-1.114 1.004l2.25 2.5a.75.75 0 0 0 1.15-.043l4.25-5.5Z",
   missing: "M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm2.78-4.22a.75.75 0 0 1-1.06 0L8 9.06l-1.72 1.72a.75.75 0 1 1-1.06-1.06L6.94 8 5.22 6.28a.75.75 0 0 1 1.06-1.06L8 6.94l1.72-1.72a.75.75 0 1 1 1.06 1.06L9.06 8l1.72 1.72a.75.75 0 0 1 0 1.06Z",
   saved: "M1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8Zm7.75-4.25a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h3.25a.75.75 0 0 0 0-1.5h-2.5v-3.5Z",
   readonly: "M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z",
-  refresh: "M13.836 2.477a.75.75 0 0 1 .75.75v3.182a.75.75 0 0 1-.75.75h-3.182a.75.75 0 0 1 0-1.5h1.37l-.84-.841a4.5 4.5 0 0 0-7.08.932.75.75 0 0 1-1.3-.75 6 6 0 0 1 9.44-1.242l.842.84V3.227a.75.75 0 0 1 .75-.75Zm-.911 7.5A.75.75 0 0 1 13.199 11a6 6 0 0 1-9.44 1.241l-.84-.84v1.371a.75.75 0 0 1-1.5 0V9.591a.75.75 0 0 1 .75-.75H5.35a.75.75 0 0 1 0 1.5H3.98l.841.841a4.5 4.5 0 0 0 7.08-.932.75.75 0 0 1 1.025-.273Z",
-  more: "M2 8a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM6.5 8a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM12.5 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z",
+  ...glyphs,
 };
-const Icon = ({ d }: { d: string }) => <svg viewBox="0 0 16 16" aria-hidden="true"><path fillRule="evenodd" clipRule="evenodd" d={d} /></svg>;
 const labelOf = (c: Connection) => c.description || c.name;
 /** Up to three workflow links (to each one's Connections tab), then "and N more". */
 const workflowLinks = (ids: string[]) => <>{ids.slice(0, 3).map((id, i) => <Fragment key={id}>{i ? ", " : ""}
@@ -69,7 +68,7 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
   const missing = connections.filter((c) => stateOf(c) === "missing").length, pending = connections.some((c) => stateOf(c) === "saved" && going(c));
   // A workflow's tab (`only`): null when its registry entry names no keys at all, [] when it uses none.
   const summary = only === null ? "This workflow doesn't list the keys it uses yet." : only && !only.length ? "This workflow uses no keys."
-    : !n ? (only ? "None of the keys this workflow uses is listed yet." : "No connections yet. Add one, or ask your agent to list them in .env.example.")
+    : !n ? (only ? "None of the keys this workflow uses is listed yet." : "No connections yet. Add one, or ask your agent to.")
     : missing ? `${missing} of ${n} ${n === 1 ? "key isn't" : "keys aren't"} set ${where}.`
     : pending ? `Your workflows can use the keys you saved ${local ? "in a few seconds" : "in about a minute"}.`
     : waiting ? `${waiting} saved ${waiting === 1 ? "key isn't" : "keys aren't"} live yet; the next production deployment uses ${waiting === 1 ? "it" : "them"}.`
@@ -111,7 +110,7 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
       </>}
       <div className="page">
         <Status state={state} />
-        {only === null && <p className="notice">Ask your agent to declare this workflow's connections, then they show here with whether each is set.</p>}
+        {only === null && <p className="notice">Ask your agent to list the keys this workflow uses.</p>}
         {data.tokenWarning && <p className="banner warn">{data.tokenWarning}</p>}
         {save.mode === "off" && <p className="banner">{save.reason}</p>}
         {data.listError && <p className="banner warn">{data.listError}</p>}
@@ -129,7 +128,7 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
                   {c.description && <p className="muted connection-variable">{c.name}</p>}
                   {!only && (c.usedBy.length ? <p className="muted connection-usage">{s === "missing" ? "Needed by" : "Used by"} {workflowLinks(c.usedBy)}</p>
                     : data.usageComplete && <p className="muted connection-usage">Not used by any workflow</p>)}
-                  {c.shell && <p className="connection-usage connection-shell">Set in your shell, which wins over .env.local</p>}
+                  {c.shell && <p className="connection-usage connection-shell">Also set in your shell, which overrides it</p>}
                   {c.reserved && s !== "provided" && <p className="muted connection-usage">Set with the vendor's CLI or integration, not here</p>}
                 </div>
                 <span className="connection-state" data-state={s} title={s === "readonly" ? "Shared with other environments or owned by Vercel or an integration: change it in Vercel" : undefined}>
@@ -152,9 +151,6 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
             );
           })}
         </div>}
-        {canChange && n > 0 && <p className="muted connection-hint">
-          {local ? "Saved to .env.local on this computer, names and labels to .env.example. Values are never shown here." : "Saved to Production on Vercel; production redeploys."}
-        </p>}
       </div>
       {open && <ConnectionDialog {...open} local={local} csrf={save.csrf} existing={data.connections} close={close}
         done={(name, r, action) => done(open, name, r, action)} />}
@@ -195,7 +191,7 @@ function ConnectionDialog({ kind, c, local, csrf, existing, close, done }: Open 
         {kind === "delete" ? <>
           <p className="connection-warning">{used.length ? <>Used by {workflowLinks(used)}. {used.length === 1 ? "It stops" : "They stop"} working until the key is added again.</>
             : "No workflow lists it as used."}</p>
-          <p className="muted">{local ? `Removes ${c!.name} from .env.local and .env.example.` : `Removes ${c!.name} from Production on Vercel; production redeploys.`}</p>
+          {!local && <p className="muted">Production redeploys without it.</p>}
         </> : <div className="connection-fields">
           <label htmlFor="connection-label">Name</label>
           <input id="connection-label" name="label" placeholder="Apollo" maxLength={256} required={kind === "add" || renames} disabled={kind === "edit" && !renames}
@@ -205,7 +201,8 @@ function ConnectionDialog({ kind, c, local, csrf, existing, close, done }: Open 
             readOnly={Boolean(c)} title="Letters, digits and _, not starting with a digit" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} />
           <label htmlFor="connection-value">{kind === "edit" ? "New value" : "Value"}</label>
           <input ref={input} id="connection-value" name="value" type="password" autoComplete="new-password" spellCheck={false} maxLength={32_768} required={!renames}
-            autoFocus={Boolean(c)} placeholder={renames ? "Leave empty to keep the current value" : undefined} value={value} onChange={(e) => setValue(e.target.value)} />
+            className={renames ? undefined : "secret"} autoFocus={Boolean(c)} placeholder={renames ? "Leave empty to keep the current value" : "apk_7f3k9q2m"}
+            value={value} onChange={(e) => setValue(e.target.value)} />
         </div>}
         {error && <p role="alert" className="error">{error}</p>}
         <div className="dialog-actions">

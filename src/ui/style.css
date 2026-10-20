@@ -115,6 +115,21 @@ dialog::backdrop { background: #0006; }
 .page { padding: 0 24px 40px; max-width: 1148px; }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; flex-shrink: 0; padding: 12px 24px; border-bottom: 1px solid var(--border); }
 .toolbar .end { margin-left: auto; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.icon-button { display: inline-grid; place-items: center; width: 32px; padding: 0; }
+.icon-button svg { width: 16px; height: 16px; fill: currentColor; }
+@media (pointer: coarse) { .icon-button { position: relative; } .icon-button::after { content: ""; position: absolute; inset: -6px; } }
+/* A button's menu of actions (menu.tsx), in the top layer under its button. */
+.menu-trigger { display: inline-flex; align-items: center; gap: 10px; }
+.menu-trigger::after { content: ""; width: 7px; height: 7px; margin-top: -4px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); rotate: 45deg; }
+.menu-trigger:has(+ .menu:popover-open) { background: var(--hover); }
+.menu {
+  position: fixed; inset: var(--popover-top, 0) auto auto var(--popover-left, 0); margin: 0; min-width: 168px; padding: 4px;
+  border: 0; border-radius: 8px; color: var(--text); background: var(--bg); box-shadow: 0 0 0 1px var(--border), 0 12px 32px #0003;
+}
+.menu:popover-open { display: grid; }
+.menu [role="menuitem"] { display: flex; align-items: center; min-height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: none; text-align: left; white-space: nowrap; }
+.menu [role="menuitem"]:hover:not(:disabled), .menu [role="menuitem"]:focus-visible { background: var(--hover); text-decoration: none; outline: none; }
 .notice { padding: 24px; color: var(--muted); }
 .notice.error { color: var(--failed); }
 .page > .notice { padding: 24px 0; }

@@ -26,3 +26,8 @@ Use placeholders instead: Acme, `example.com`, `box.tail1234.ts.net`, `gtm-acme.
 private for a reviewer goes in the task's private report, never in the pull request. CI's privacy check
 (`.github/workflows/privacy.yml`, rules in `.github/private-data.toml`) fails the build on the patterns it can see;
 company data it cannot, so this rule still holds where the check is silent.
+
+## Console copy
+
+Console text (`src/ui`) only helps the user act: labels, empty states, errors with their fix. Never explain how it
+works inside: no file names, where things are stored, what is never shown, or why it is built that way.
