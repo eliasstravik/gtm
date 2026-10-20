@@ -89,13 +89,32 @@ function writeAtomic(name: string, text: string, mode: number): void {
   try { renameSync(temp, file(name)); chmodSync(file(name), mode); } catch (error) { rmSync(temp, { force: true }); throw error; }
 }
 
-/** NAME='value' (backticks when it contains ') in .env.local, `$` escaped so @next/env reads it back as is; null removes it. */
+/**
+ * The last line of the entry starting at line `i`: a quoted value runs over several lines up to its closing quote, as
+ * @next/env (and Node's parseEnv) read it; an unclosed quote ends with its line.
+ */
+function entryEnd(lines: string[], i: number): number {
+  const rest = lines.slice(i).join("\n"), open = /^\s*(?:export\s+)?[\w.-]+\s*=\s*(["'`])/.exec(rest);
+  const close = open && new RegExp(`(?<!\\\\)${open[1]}`).exec(rest.slice(open[0].length));
+  return close ? i + rest.slice(0, open![0].length + close.index).split("\n").length - 1 : i;
+}
+
+/**
+ * NAME='value' (backticks when it contains ') in .env.local, `$` escaped so @next/env reads it back as is; null removes
+ * it. Every earlier NAME entry goes whole, each line of a multiline value too, so no part of an old value stays.
+ */
 function writeEnvLocal(name: string, v: string | null): void {
   const q = v?.includes("'") ? "`" : "'", re = assigns(name), lines = readText(".env.local").split("\n");
-  const at = lines.findIndex((l) => re.test(l)), entry = v === null ? [] : [`${name}=${q}${v.replaceAll("$", "\\$")}${q}`];
-  if (v === null && at < 0) return;
-  const next = at < 0 ? [...lines.slice(0, lines.at(-1) === "" ? -1 : undefined), ...entry, ""]
-    : lines.flatMap((l, i) => (i === at ? entry : re.test(l) ? [] : [l]));
+  const entry = v === null ? [] : [`${name}=${q}${v.replaceAll("$", "\\$")}${q}`], next: string[] = [];
+  let found = false;
+  for (let i = 0; i < lines.length; i++) {
+    const end = /^\s*(?:export\s+)?[\w.-]+\s*=/.test(lines[i]) ? entryEnd(lines, i) : i;
+    if (re.test(lines[i])) { if (!found) next.push(...entry); found = true; }
+    else next.push(...lines.slice(i, end + 1));
+    i = end;
+  }
+  if (v === null && !found) return;
+  if (!found) { if (next.at(-1) === "") next.pop(); next.push(...entry, ""); }
   writeAtomic(".env.local", next.join("\n"), 0o600);
 }
 

@@ -467,6 +467,23 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
       assert.ok(!fs.readdirSync(s.dir).some((f) => f.startsWith(".env.gtm-")), "no temp files left");
     });
 
+    await t.test("delete and Save drop every line of a multiline value written outside the Console, and only that entry", async () => {
+      // A neighbour's multiline value that mentions the key must stay as it is.
+      fs.appendFileSync(file(".env.example"), "# Acme multiline (acceptance)\nACME_MULTI_KEY=\n# Acme second multiline (acceptance)\nACME_MULTI_TWO=\n");
+      fs.appendFileSync(file(".env.local"), 'ACME_MULTI_KEY="multi-first\nmulti-second-line"\n' +
+        "ACME_NOTE=`note\nACME_MULTI_KEY=not-an-entry\nend`\nACME_MULTI_TWO='two-first\ntwo-second-line'\n");
+      assert.equal(await loaded("ACME_MULTI_KEY"), "multi-first\nmulti-second-line", "the multiline value loads before the change");
+      const deleted = await change({ action: "delete", name: "ACME_MULTI_KEY" });
+      assert.equal(deleted.status, 200, deleted.text);
+      assert.equal((await change({ name: "ACME_MULTI_TWO", value: "two-new" })).status, 200);
+      const local = read(".env.local");
+      assert.ok(!/multi-first|multi-second-line|two-first|two-second-line/.test(local), `an old value stayed:\n${local.replace(/=.*/g, "=…")}`);
+      assert.match(local, /^ACME_MULTI_TWO='two-new'$/m);
+      assert.equal(await loaded("ACME_NOTE"), "note\nACME_MULTI_KEY=not-an-entry\nend", "the neighbour's value is kept whole");
+      assert.equal(await loaded("ACME_MULTI_KEY"), null);
+      assert.equal(await loaded("ACME_API_KEY"), tricky, "other lines kept");
+    });
+
     await t.test("refuses DATABASE_URL, SLACK_SIGNING_SECRET, GTM_*, a bad key, multi-line values, redeploy and unknown actions", async () => {
       const before = [read(".env.local"), read(".env.example")];
       for (const body of [{ name: "DATABASE_URL", value: "postgres://x@db.example/x" }, { name: "SLACK_SIGNING_SECRET", value: "abc" },

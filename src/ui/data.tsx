@@ -215,12 +215,18 @@ export function DataView({ tables: only }: { tables?: string[] }) {
     if (target) target.focus();
     else { focusAfterDraw.current = to; list.reveal(to[0]); }
   }
+  const openButton = database?.mode === "local" ? <button type="button" className="end" onClick={openDatabase}
+    title="Drizzle Studio on this computer's database, for full editing. This view is a preview.">Open database ↗</button>
+    : database?.mode === "link" && database.url ? <a className="button end" href={database.url} target="_blank"
+      rel="noopener noreferrer" title={database.title}>{database.label} ↗</a> : null;
   const cell = selected && list.rows.has(selected[0]) ? selected : null, span = cols.length + 1, sort = params.get("sort"), desc = params.get("order") === "desc";
   return (
     <>
       {!only && <div className="title-row"><h1>Data</h1></div>}
       <section className="pane data-pane" aria-label="Data">
         <Status state={!tables.data ? tables : { ...list.state, data: page, loading: !page && list.state.loading }} />
+        {/* A new project has no tables yet but still gets the database button. */}
+        {tables.data && !names.length && openButton && <div className="toolbar">{openButton}</div>}
         {tables.data && !names.length && <p className="notice">{only ? "No configured data for this workflow." : "No tables yet. Workflows keep their results in their own tables."}</p>}
         {head && (
           <>
@@ -245,10 +251,7 @@ export function DataView({ tables: only }: { tables?: string[] }) {
               <button type="button" disabled={exporting || !list.total} onClick={() => download("json")}>Export JSON</button>
               {cell && <button type="button" onClick={() => copy(value(cell))}>Copy cell</button>}
               {cell && <button type="button" onClick={(e) => { origin.current = e.currentTarget; setDetail(value(cell)); dialog.current?.showModal(); }}>View value</button>}
-              {database?.mode === "local" && <button type="button" className="end" onClick={openDatabase}
-                title="Drizzle Studio on this computer's database, for full editing. This view is a preview.">Open database ↗</button>}
-              {database?.mode === "link" && database.url && <a className="button end" href={database.url} target="_blank"
-                rel="noopener noreferrer" title={database.title}>{database.label} ↗</a>}
+              {openButton}
             </div>
             {page && <><div className="table-scroll" ref={box}>
               <table ref={grid} className="data-grid" role="grid" aria-label={table} aria-readonly="true" aria-rowcount={list.total + 1}
