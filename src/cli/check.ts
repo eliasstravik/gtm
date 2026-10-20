@@ -85,15 +85,89 @@ function layout(dir: string, r: Report): void {
 
 /** workflows/index.ts must exist, export `workflows`, and every import in it must resolve. */
 function registry(dir: string, r: Report): void {
-  const src = read(dir, "workflows/index.ts");
+  const raw = read(dir, "workflows/index.ts");
   const fix = "export const workflows = { <name>: workflowFn } (`npx @eliasstravik/gtm docs workflows`)";
-  if (src == null) return problem(r, "workflows/index.ts is missing.", `recreate it: ${fix}`);
-  if (!/export\s+(?:const|let|var)\s+workflows\b|export\s*\{[^}]*\bworkflows\b/.test(src)) problem(r, "workflows/index.ts does not export `workflows`.", fix);
-  for (const [, spec] of src.matchAll(/(?:^|[\s;])(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\sfrom\s*)?["']([^"']+)["']/g))
+  if (raw == null) return problem(r, "workflows/index.ts is missing.", `recreate it: ${fix}`);
+  const src = mask(raw);
+  if (!/export\s+(?:const|let|var)\s+workflows\b|export\s*\{[^}]*\bworkflows\b/.test(src.code)) problem(r, "workflows/index.ts does not export `workflows`.", fix);
+  for (const spec of specifiers(src, /(?:^|[\s;])(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\sfrom\s*)?["']/g))
     if (!resolves(dir, spec)) problem(r, `workflows/index.ts imports "${spec}", which does not resolve.`, "fix the path, create the file, or `npm install` the package");
 }
 
-const AI_IMPORT = /(?:^|[\s;])(?:import(?!\s+type\b)\s*(?:[^'";]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*)["']((?:ai|@ai-sdk\/[^"'/]+)(?:\/[^"']*)?)["']/g;
+/**
+ * src with comments blanked (`text`), and with the contents of strings, template literals and regex literals blanked
+ * too (`code`), so a pattern matched on `code` is real code. Blanks are spaces, so offsets and lines stay put.
+ */
+export function mask(src: string): { text: string; code: string } {
+  const n = src.length, text = src.split(""), code = src.split("");
+  const blank = (to: string[][], from: number, end: number) => { for (const a of to) for (let k = from; k < end; k++) if (a[k] !== "\n") a[k] = " "; };
+  const open: number[] = []; // the brace depth at each template literal's `${`, to find the `}` that resumes it
+  let depth = 0, regex = true, i = 0; // regex: a `/` here starts a regex literal, not a division
+  /** Skips quoted text from `from` until `stop` says it ends (or the source does), blanking it in `code`. */
+  const skip = (from: number, stop: (j: number) => boolean) => {
+    let j = from;
+    while (j < n && !stop(j)) j += src[j] === "\\" ? 2 : 1;
+    blank([code], from, Math.min(j, n));
+    return j;
+  };
+  /** A template literal's text from `from` to its end or its next `${`. */
+  const template = (from: number) => {
+    const j = skip(from, (k) => src[k] === "`" || (src[k] === "$" && src[k + 1] === "{"));
+    regex = src[j] === "$";
+    if (regex) open.push(depth);
+    return j + (regex ? 2 : 1);
+  };
+  const WORD = /[\w$]+/y;
+  while (i < n) {
+    const c = src[i];
+    if (c === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      const line = src[i + 1] === "/", stop = line ? src.indexOf("\n", i) : src.indexOf("*/", i + 2);
+      const end = stop < 0 ? n : line ? stop : stop + 2;
+      blank([text, code], i, end);
+      i = end;
+    } else if (c === '"' || c === "'") {
+      i = skip(i + 1, (k) => src[k] === c || src[k] === "\n") + 1;
+      regex = false;
+    } else if (c === "`") i = template(i + 1);
+    else if (c === "/" && regex) {
+      let j = i + 1, cls = false; // cls: inside [...], where `/` does not end the regex
+      for (; j < n && src[j] !== "\n" && (cls || src[j] !== "/"); j += 1) {
+        if (src[j] === "\\") j += 1;
+        else if (src[j] === "[") cls = true;
+        else if (src[j] === "]") cls = false;
+      }
+      blank([code], i + 1, Math.min(j, n));
+      i = j + 1;
+      regex = false;
+    } else if (c === "}" && open.at(-1) === depth) {
+      open.pop();
+      i = template(i + 1);
+    } else if (/[\w$]/.test(c)) {
+      WORD.lastIndex = i;
+      const word = WORD.exec(src)![0];
+      regex = /^(?:return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/.test(word);
+      i += word.length;
+    } else {
+      if (c === "{") depth += 1;
+      if (c === "}") depth -= 1;
+      if (!/\s/.test(c)) regex = c !== ")" && c !== "]" && c !== "}";
+      i += 1;
+    }
+  }
+  return { text: text.join(""), code: code.join("") };
+}
+
+/** The module each match of `pattern` (on `code`, ending at a string's opening quote) names, read from `text`. */
+function specifiers({ text, code }: { text: string; code: string }, pattern: RegExp): string[] {
+  return [...code.matchAll(pattern)].map((m) => {
+    const start = m.index + m[0].length;
+    return text.slice(start, text.indexOf(m[0].at(-1)!, start));
+  });
+}
+
+/** An import, import() or require() up to its module's opening quote; AI_MODULE tests the module. */
+const AI_IMPORT = /(?:^|[\s;])(?:import(?!\s+type\b)\s*(?:[^'";]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*)["']/g;
+const AI_MODULE = /^(?:ai|@ai-sdk\/[^"'/]+)(?:\/[^"']*)?$/;
 /** A Gateway-style id or a bare provider id in quotes, except as a stage's own `model:`. */
 const MODEL_ID = /(\bmodel\s*:\s*)?["'`]((?:anthropic|openai|google|xai|mistral|meta|deepseek|groq|perplexity|cohere|bedrock|vertex|amazon|alibaba|moonshotai|zai)\/[\w.:-]+|(?:claude|gpt|gemini)-[\w.-]+)["'`]/g;
 
@@ -101,9 +175,10 @@ const MODEL_ID = /(\bmodel\s*:\s*)?["'`]((?:anthropic|openai|google|xai|mistral|
 export function aiRule(files: [string, string][]): [string, string][] {
   const found: [string, string][] = [];
   const fix = "call agent() from @eliasstravik/gtm/ai for every AI call, one-shot (no tools) or tool-using; custom tools take `tool` from there too (`npx @eliasstravik/gtm docs workflows`)";
-  for (const [file, src] of files) {
-    for (const [, spec] of src.matchAll(AI_IMPORT)) found.push([`${file} imports "${spec}".`, fix]);
-    for (const [, own, id] of src.matchAll(MODEL_ID)) if (!own) found.push([`${file} names the model "${id}".`,
+  for (const [file, raw] of files) {
+    const src = mask(raw); // comments, and for imports also strings, are not code
+    for (const spec of specifiers(src, AI_IMPORT)) if (AI_MODULE.test(spec)) found.push([`${file} imports "${spec}".`, fix]);
+    for (const [, own, id] of src.text.matchAll(MODEL_ID)) if (!own) found.push([`${file} names the model "${id}".`,
       "remove it; GTM_MODEL picks the model, and a stage that truly needs another one sets agent()'s `model`"]);
   }
   return found;

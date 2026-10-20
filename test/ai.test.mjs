@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { claudeArgs, codexArgs, excerpt, parseClaude, parseCodex } from "../dist/ai/cli.js";
 import { chooseBackend, cliModel, providerModel, sanitizeSchema } from "../dist/ai/models.js";
-import { aiRule } from "../dist/cli/check.js";
+import { aiRule, mask } from "../dist/cli/check.js";
 import { parseSkill } from "../dist/shared/skill.js";
 
 const VARS = ["VERCEL_ENV", "VERCEL_DEPLOYMENT_ID", "NODE_ENV", "GTM_DEV", "AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN", "ANTHROPIC_API_KEY",
@@ -113,6 +113,26 @@ test("gtm check flags AI SDK imports and model ids in workflows/, not agent() or
 import { gateway } from "@ai-sdk/gateway";\nconst MODEL = "openai/gpt-6";\nawait agent({ name: "a", model: "anthropic/claude-sonnet-5.5" });\nfetch("https://api.openai.com/v1");`;
   assert.deepEqual(aiRule([["workflows/x.ts", src]]).map(([what]) => what),
     ['workflows/x.ts imports "ai".', 'workflows/x.ts imports "@ai-sdk/gateway".', 'workflows/x.ts names the model "openai/gpt-6".']);
+});
+
+test("gtm check ignores AI SDK imports and model ids in comments and strings, and still flags real ones", () => {
+  const flagged = (src) => aiRule([["workflows/x.ts", src]]).map(([what]) => what);
+  assert.deepEqual(flagged('// Previous implementation: import { generateText } from "ai";\nexport const x = 1;'), [], "line comment");
+  assert.deepEqual(flagged('/*\nimport { generateText } from "ai";\nconst m = require("@ai-sdk/openai");\n*/\nexport const x = 1;'), [], "block comment");
+  assert.deepEqual(flagged('/** Was: `await import("ai")` with model: "openai/gpt-6" */\nexport const x = 1;'), [], "doc comment");
+  assert.deepEqual(flagged(`const doc = 'import { generateText } from "ai"';\nconst how = "use require('ai')";`), [], "import inside a string");
+  assert.deepEqual(flagged('const prompt = `Never write:\nimport { generateText } from "ai";\n${name}`;'), [], "import inside a template literal");
+  assert.deepEqual(flagged('const q = s.replace(/"/g, "").split("//");\nimport { generateText } from "ai";'), ['workflows/x.ts imports "ai".'], "a quote in a regex and // in a string hide nothing");
+  assert.deepEqual(flagged('// import { old } from "ai";\nimport { generateText } from "ai"; // the real one'), ['workflows/x.ts imports "ai".'], "a real import still fails");
+  assert.deepEqual(flagged('const t = `${await import("@ai-sdk/anthropic")}`;'), ['workflows/x.ts imports "@ai-sdk/anthropic".'], "import() inside ${} is code");
+  assert.deepEqual(flagged('// const MODEL = "openai/gpt-6";\nconst id = "openai/gpt-6";'), ['workflows/x.ts names the model "openai/gpt-6".']);
+});
+
+test("mask: comments blanked in text; strings, templates and regexes also in code; offsets and lines kept", () => {
+  const src = 'a("x//y"); // c\nb(/[/"]/, `t${ {k: "v"}.k }u`) /* d\n*/ / 2;';
+  const { text, code } = mask(src);
+  assert.equal(text, 'a("x//y");     \nb(/[/"]/, `t${ {k: "v"}.k }u`)     \n   / 2;');
+  assert.equal(code, 'a("    ");     \nb(/    /, ` ${ {k: " "}.k } `)     \n   / 2;');
 });
 
 test("parseSkill: name and description from front matter, the body without it", () => {
