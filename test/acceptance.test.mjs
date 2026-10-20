@@ -482,6 +482,19 @@ process.stdout.write(JSON.stringify(process.env[${JSON.stringify(name)}] ?? null
       assert.equal(await loaded("ACME_NOTE"), "note\nACME_MULTI_KEY=not-an-entry\nend", "the neighbour's value is kept whole");
       assert.equal(await loaded("ACME_MULTI_KEY"), null);
       assert.equal(await loaded("ACME_API_KEY"), tricky, "other lines kept");
+      // A quoted value ending in \ (dotenv reads \' as the closing quote when no later one fits): a neighbour's, then the deleted key's own.
+      const original = read(".env.local");
+      for (const [extra, kept] of [[`ACME_NOTE2='ends\\'\nACME_MULTI_KEY="multi-first\nmulti-second-line"\nACME_KEEP=keep\n`, { ACME_NOTE2: "ends\\", ACME_KEEP: "keep" }],
+        [`ACME_MULTI_KEY='multi-first\\'\nACME_KEEP='ok'\nACME_TAIL=preserve\n`, { ACME_KEEP: "ok", ACME_TAIL: "preserve" }]]) {
+        fs.writeFileSync(file(".env.local"), original + extra);
+        fs.appendFileSync(file(".env.example"), "ACME_MULTI_KEY=\n");
+        for (const [name, value] of Object.entries(kept)) assert.equal(await loaded(name), value, `${name} before the delete`);
+        assert.equal((await change({ action: "delete", name: "ACME_MULTI_KEY" })).status, 200);
+        assert.ok(!/multi-first|multi-second-line/.test(read(".env.local")), "an old value stayed");
+        assert.equal(await loaded("ACME_MULTI_KEY"), null);
+        for (const [name, value] of Object.entries(kept)) assert.equal(await loaded(name), value, `${name} after the delete`);
+      }
+      fs.writeFileSync(file(".env.local"), original);
     });
 
     await t.test("refuses DATABASE_URL, SLACK_SIGNING_SECRET, GTM_*, a bad key, multi-line values, redeploy and unknown actions", async () => {

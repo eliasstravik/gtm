@@ -1,7 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseEnv } from "node:util";
 import { environment, isHosted, PULL_PLACEHOLDER, safeEqual, value } from "../shared/env.js";
 import { jwtClaims, PROBE_PATH, PROTECTED_STATUSES, requestHost, vercelJwts } from "../shared/request.js";
 import type { Registry } from "./runs.js";
@@ -55,9 +54,11 @@ export function refusedName(name: string, hosted = isHosted()): boolean {
   return /^(DATABASE_URL|POSTGRES_|PG|GTM_|VERCEL_|SLACK_|GITHUB_|EVE_)|^CRON_SECRET$/.test(n) || (hosted && n.startsWith("AI_GATEWAY_"));
 }
 
-/** Names with a value in `.env.local` (Vercel's pull placeholder counts as none). */
+/** Names with a value in `.env.local` as @next/env reads it (the last entry wins; Vercel's pull placeholder counts as none). */
 function envLocalNames(): string[] {
-  try { return Object.entries(parseEnv(readText(".env.local"))).filter(([, v]) => v && v !== PULL_PLACEHOLDER).map(([k]) => k); } catch { return []; }
+  const values = new Map([...readText(".env.local").replace(/\r\n?/g, "\n").matchAll(ENTRY)]
+    .map((m) => [m[1], (m[2] ?? "").trim().replace(/^(['"`])([\s\S]*)\1$/, "$2")] as const));
+  return [...values].filter(([, v]) => v && v !== PULL_PLACEHOLDER).map(([k]) => k);
 }
 
 type Change = { action: "save" | "rename" | "delete" | "redeploy"; name: string; value?: string; label?: string };
@@ -90,31 +91,25 @@ function writeAtomic(name: string, text: string, mode: number): void {
 }
 
 /**
- * The last line of the entry starting at line `i`: a quoted value runs over several lines up to its closing quote, as
- * @next/env (and Node's parseEnv) read it; an unclosed quote ends with its line.
+ * dotenv 16.3's entry rule, which @next/env reads .env.local with (copied from it, so both always agree): one match
+ * per entry, a quoted value over several lines included, `\'` inside quotes as dotenv takes it.
  */
-function entryEnd(lines: string[], i: number): number {
-  const rest = lines.slice(i).join("\n"), open = /^\s*(?:export\s+)?[\w.-]+\s*=\s*(["'`])/.exec(rest);
-  const close = open && new RegExp(`(?<!\\\\)${open[1]}`).exec(rest.slice(open[0].length));
-  return close ? i + rest.slice(0, open![0].length + close.index).split("\n").length - 1 : i;
-}
+const ENTRY = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/dgm;
 
 /**
  * NAME='value' (backticks when it contains ') in .env.local, `$` escaped so @next/env reads it back as is; null removes
- * it. Every earlier NAME entry goes whole, each line of a multiline value too, so no part of an old value stays.
+ * it. Every NAME entry goes whole, from its key to the end of its value as @next/env reads it, so no part of an old
+ * value stays and no other entry is touched; the new one takes the first one's place.
  */
 function writeEnvLocal(name: string, v: string | null): void {
-  const q = v?.includes("'") ? "`" : "'", re = assigns(name), lines = readText(".env.local").split("\n");
-  const entry = v === null ? [] : [`${name}=${q}${v.replaceAll("$", "\\$")}${q}`], next: string[] = [];
-  let found = false;
-  for (let i = 0; i < lines.length; i++) {
-    const end = /^\s*(?:export\s+)?[\w.-]+\s*=/.test(lines[i]) ? entryEnd(lines, i) : i;
-    if (re.test(lines[i])) { if (!found) next.push(...entry); found = true; }
-    else next.push(...lines.slice(i, end + 1));
-    i = end;
-  }
-  if (v === null && !found) return;
-  if (!found) { if (next.at(-1) === "") next.pop(); next.push(...entry, ""); }
+  const text = readText(".env.local").replace(/\r\n?/g, "\n"), lines = text.split("\n");
+  const lineOf = (offset: number) => text.slice(0, offset).split("\n").length - 1;
+  const spans = [...text.matchAll(ENTRY)].filter((m) => m[1] === name)
+    .map((m) => [lineOf(m.indices![1][0]), lineOf((m.indices![2] ?? m.indices![1])[1])]);
+  if (v === null && !spans.length) return;
+  const q = v?.includes("'") ? "`" : "'", entry = v === null ? [] : [`${name}=${q}${v.replaceAll("$", "\\$")}${q}`];
+  const next = !spans.length ? [...lines.slice(0, lines.at(-1) === "" ? -1 : undefined), ...entry, ""]
+    : lines.flatMap((l, i) => (!spans.some(([from, to]) => i >= from && i <= to) ? [l] : i === spans[0][0] ? entry : []));
   writeAtomic(".env.local", next.join("\n"), 0o600);
 }
 
