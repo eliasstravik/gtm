@@ -92,7 +92,7 @@ export function WorkflowsView() {
           {w.schedule && <span className="wf-meta">{scheduleText(w.schedule)}</span>}
         </li>)}
       </ul> : <p className="notice">
-        {all.length ? "No matching workflows. " : <>No workflows yet. Your agent adds them in <code>workflows/index.ts</code>.</>}
+        {all.length ? "No matching workflows. " : "No workflows yet. Ask your agent to build one."}
         {all.length > 0 && <button type="button" onClick={() => go({ q: undefined, filter: undefined }, true)}>Show all</button>}
       </p>)}
     </div>

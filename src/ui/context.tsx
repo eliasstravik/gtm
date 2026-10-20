@@ -56,7 +56,7 @@ export function ContextView() {
             {trees.map((g) => (
               <section key={g.name}>
                 <h2>{g.name}</h2>
-                {!g.files.length && <p className="dir">{g.name === "Skills" ? "None yet: .agents/skills/<name>/SKILL.md" : "None yet"}</p>}
+                {!g.files.length && <p className="dir">None yet</p>}
                 <ul>
                   {g.items.map((it) => (
                     <li key={it.key} style={{ "--depth": it.depth } as CSSProperties}>
@@ -81,7 +81,7 @@ export function ContextView() {
                 ))}
               </select>
             )}
-            {!path ? <p className="notice">No context yet. Your agent writes it as Markdown files under context/.</p> : !doc.data ? <Status state={doc} /> : <>
+            {!path ? <p className="notice">No context yet. Ask your agent to write it.</p> : !doc.data ? <Status state={doc} /> : <>
               <div className="doc-head">
                 <span className="mono">{doc.data.path}</span>
                 {doc.data.githubUrl && <a href={doc.data.githubUrl} target="_blank" rel="noreferrer">Open on GitHub ↗</a>}

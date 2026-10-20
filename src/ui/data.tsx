@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ColumnChooser } from "./column-chooser.js";
 import { api, Search, Status, time, useApi, useQuery } from "./load.js";
+import { glyphs, Icon, Menu } from "./menu.js";
 import "./data.css";
 
 type Page = { table: string; fields: { name: string; type: string }[]; columns: string[]; pinned: string | null; rows: unknown[][]; offset: number; total: number };
@@ -215,10 +216,15 @@ export function DataView({ tables: only }: { tables?: string[] }) {
     if (target) target.focus();
     else { focusAfterDraw.current = to; list.reveal(to[0]); }
   }
-  const openButton = database?.mode === "local" ? <button type="button" className="end" onClick={openDatabase}
-    title="Drizzle Studio on this computer's database, for full editing. This view is a preview.">Open database ↗</button>
-    : database?.mode === "link" && database.url ? <a className="button end" href={database.url} target="_blank"
-      rel="noopener noreferrer" title={database.title}>{database.label} ↗</a> : null;
+  // The database button, or (`role` menuitem) its entry in the More menu.
+  const openDatabaseAs = (className?: string, role?: "menuitem") => database?.mode === "local"
+    ? <button type="button" className={className} role={role} onClick={openDatabase}>Open database ↗</button>
+    : database?.mode === "link" && database.url ? <a className={role ? undefined : `button ${className}`} role={role} href={database.url}
+      target="_blank" rel="noopener noreferrer" title={database.title}>{database.label} ↗</a> : null;
+  const exports = <>
+    <button type="button" role="menuitem" disabled={exporting || !list.total} onClick={() => download("csv")}>Export CSV</button>
+    <button type="button" role="menuitem" disabled={exporting || !list.total} onClick={() => download("json")}>Export JSON</button>
+  </>;
   const cell = selected && list.rows.has(selected[0]) ? selected : null, span = cols.length + 1, sort = params.get("sort"), desc = params.get("order") === "desc";
   return (
     <>
@@ -226,11 +232,11 @@ export function DataView({ tables: only }: { tables?: string[] }) {
       <section className="pane data-pane" aria-label="Data">
         <Status state={!tables.data ? tables : { ...list.state, data: page, loading: !page && list.state.loading }} />
         {/* A new project has no tables yet but still gets the database button. */}
-        {tables.data && !names.length && openButton && <div className="toolbar">{openButton}</div>}
-        {tables.data && !names.length && <p className="notice">{only ? "No configured data for this workflow." : "No tables yet. Workflows keep their results in their own tables."}</p>}
+        {tables.data && !names.length && database && <div className="toolbar">{openDatabaseAs("end")}</div>}
+        {tables.data && !names.length && <p className="notice">{only ? "No configured data for this workflow." : "No tables yet. Workflow results show up here."}</p>}
         {head && (
           <>
-            <div className="toolbar">
+            <div className="toolbar data-toolbar">
               <select name="data-table" aria-label="Data table" value={table}
                 onChange={(e) => update({ table: e.target.value, ...Object.fromEntries(FILTERS.map((k) => [k, undefined])) })}>
                 {names.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -245,13 +251,14 @@ export function DataView({ tables: only }: { tables?: string[] }) {
                 onChange={(e) => update({ operator: e.target.value })}>{Object.entries(OPERATORS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}
               {params.has("field") && params.get("operator") !== "missing" &&
                 <Search label="Filter value" value={params.get("value") ?? ""} onChange={(v) => update({ value: v || undefined })} />}
-              <button type="button" onClick={list.state.reload}>Refresh</button>
-              <ColumnChooser key={table} fields={head.fields.map((f) => f.name)} visible={head.columns} onChange={(c) => update({ columns: c?.join(",") })} />
-              <button type="button" disabled={exporting || !list.total} onClick={() => download("csv")}>Export CSV</button>
-              <button type="button" disabled={exporting || !list.total} onClick={() => download("json")}>Export JSON</button>
-              {cell && <button type="button" onClick={() => copy(value(cell))}>Copy cell</button>}
-              {cell && <button type="button" onClick={(e) => { origin.current = e.currentTarget; setDetail(value(cell)); dialog.current?.showModal(); }}>View value</button>}
-              {openButton}
+              {/* Exports and the database fold into More when the row runs out of room (data.css). */}
+              <div className="toolbar-actions">
+                <button type="button" className="icon-button" aria-label="Refresh" title="Refresh" onClick={list.state.reload}><Icon d={glyphs.refresh} /></button>
+                <ColumnChooser key={table} fields={head.fields.map((f) => f.name)} visible={head.columns} onChange={(c) => update({ columns: c?.join(",") })} />
+                <Menu label="Export" className="menu-trigger roomy" trigger="Export">{exports}</Menu>
+                {openDatabaseAs("roomy")}
+                <Menu label="More actions" className="icon-button cramped" trigger={<Icon d={glyphs.more} />}>{exports}{openDatabaseAs(undefined, "menuitem")}</Menu>
+              </div>
             </div>
             {page && <><div className="table-scroll" ref={box}>
               <table ref={grid} className="data-grid" role="grid" aria-label={table} aria-readonly="true" aria-rowcount={list.total + 1}
@@ -305,10 +312,17 @@ export function DataView({ tables: only }: { tables?: string[] }) {
               </table>
               {list.fresh && !list.total && <p className="notice">{params.has("q") || params.has("field") ? "No matching records." : "This table is empty."}</p>}
             </div>
-            <p className="grid-footer muted">{list.fresh ? `${list.total.toLocaleString()} matching ${list.total === 1 ? "record" : "records"}` : "Loading…"}</p></>}
+            <div className="grid-footer">
+              <span className="muted">{!list.fresh ? "Loading…" : `${list.total.toLocaleString()} ${params.has("q") || params.has("field") ? "matching " : ""}${list.total === 1 ? "record" : "records"}`}</span>
+              <p className="grid-message" role="status">{message}</p>
+              {cell && <div className="grid-cell-actions">
+                <button type="button" onClick={() => copy(value(cell))}>Copy cell</button>
+                <button type="button" onClick={(e) => { origin.current = e.currentTarget; setDetail(value(cell)); dialog.current?.showModal(); }}>View value</button>
+              </div>}
+            </div></>}
           </>
         )}
-        <p className="grid-message" role="status">{message}</p>
+        {!page && <p className="grid-message" role="status">{message}</p>}
         <dialog ref={dialog} className="value-dialog" aria-label="Cell value" onClose={() => origin.current?.focus()}>
           <div className="dialog-head">
             <h2>Cell value</h2>

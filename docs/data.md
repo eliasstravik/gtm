@@ -64,7 +64,8 @@ after it. It runs no SQL from the browser.
 
 ## Open database
 
-The Data toolbar's "Open database" goes to a full editor; the Data view is a preview.
+The Data toolbar's "Open database" (in its ⋯ menu, with Export, when the window is narrow) goes to a full editor; the
+Data view is a preview. It shows on a project with no tables too.
 
 - Locally it starts Drizzle Studio for the database the app uses (the local PGlite one or `DATABASE_URL`), with
   the project's own `drizzle-kit` and `drizzle.config.ts`, on 127.0.0.1 and the first free port from 4983, and

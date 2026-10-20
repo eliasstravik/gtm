@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
+import { place } from "./menu.js";
 
 /** The Columns button and its popover: a draft of checked columns (at least one) applied at once, or Reset to all. */
 export function ColumnChooser({ fields, visible, onChange }: { fields: string[]; visible: string[]; onChange: (columns: string[] | undefined) => void }) {
@@ -8,15 +9,7 @@ export function ColumnChooser({ fields, visible, onChange }: { fields: string[];
   const [open, setOpen] = useState(false), [query, setQuery] = useState(""), [draft, setDraft] = useState(visible);
   const matches = fields.filter((f) => `${f.replaceAll("_", " ")} ${f}`.toLowerCase().includes(query.trim().toLowerCase()));
 
-  /** Under the button, or above it when there is no room below; always inside the window. */
-  function position() {
-    if (!trigger.current || !panel.current) return;
-    const rect = trigger.current.getBoundingClientRect(), width = Math.min(304, innerWidth - 24);
-    const height = panel.current.offsetHeight || Math.min(420, innerHeight - 24);
-    const top = rect.bottom + height + 6 <= innerHeight - 12 ? rect.bottom + 6 : Math.max(12, rect.top - height - 6);
-    panel.current.style.setProperty("--columns-left", `${Math.max(12, Math.min(rect.left, innerWidth - width - 12))}px`);
-    panel.current.style.setProperty("--columns-top", `${top}px`);
-  }
+  const position = () => trigger.current && panel.current && place(trigger.current, panel.current, Math.min(304, innerWidth - 24));
   useEffect(() => {
     if (!open) return;
     addEventListener("resize", position);

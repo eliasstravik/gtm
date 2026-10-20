@@ -16,7 +16,23 @@
 .cell-link { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
 .cell-link:hover { text-decoration-color: currentColor; }
 .resize-handle { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 2; width: 8px; cursor: col-resize; touch-action: none; }
-.grid-message { min-height: 24px; margin: 0; padding: 2px 24px; font-size: 12px; color: var(--muted); }
+/* One row: table, search and filter, then the actions. Below 880px the exports and the database fold into More. */
+.data-pane { container-type: inline-size; }
+.data-toolbar { gap: 8px; }
+.data-toolbar select[name="data-table"] { max-width: 220px; }
+/* A small basis decides the wrap, then the fields grow into what is left. */
+.data-toolbar input[type="search"] { flex: 1 1 140px; min-width: 120px; max-width: 240px; }
+.data-toolbar .cramped { display: none; }
+@container (max-width: 880px) {
+  .data-toolbar .roomy { display: none; }
+  .data-toolbar .cramped { display: inline-grid; }
+}
+/* The count, what just happened and the selected cell's actions, in one slim row under the table. */
+.data-pane .grid-footer { justify-content: flex-start; gap: 16px; min-height: 36px; padding: 2px 24px; font-size: 13px; }
+.grid-message { min-width: 0; margin: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-pane > .grid-message:not(:empty) { padding: 8px 24px; }
+.grid-cell-actions { display: flex; gap: 8px; margin-left: auto; }
+.grid-cell-actions button { min-height: 26px; padding: 1px 8px; }
 .value-dialog { width: 640px; }
 .value-dialog .value { max-height: 60vh; margin-top: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .structured-value summary { cursor: pointer; }
@@ -29,7 +45,7 @@
 .columns-trigger[aria-expanded="true"] { background: var(--hover); }
 .columns-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 .columns-popover {
-  position: fixed; inset: var(--columns-top, 0) auto auto var(--columns-left, 0); margin: 0; padding: 0; width: min(304px, calc(100vw - 24px));
+  position: fixed; inset: var(--popover-top, 0) auto auto var(--popover-left, 0); margin: 0; padding: 0; width: min(304px, calc(100vw - 24px));
   max-height: min(420px, calc(100dvh - 24px)); border: 0; border-radius: 10px; color: var(--text); background: var(--bg);
   box-shadow: 0 0 0 1px var(--border), 0 12px 32px #0003; overflow: hidden;
 }
@@ -50,7 +66,9 @@
 
 @media (max-width: 640px) {
   .data-pane .table-scroll { padding-inline: 12px; }
-  .data-pane .toolbar input[type="search"] { min-width: 160px; }
-  .data-pane .toolbar .end { margin-left: 0; }
+  .data-toolbar select[name="data-table"] { flex: 1 1 140px; max-width: none; }
+  .data-toolbar input[type="search"] { flex: 1 1 160px; max-width: none; }
+  .data-pane .grid-footer { padding-inline: 12px; }
+  .data-pane > .grid-message { padding-inline: 12px; }
   .columns-option { min-height: 40px; }
 }
