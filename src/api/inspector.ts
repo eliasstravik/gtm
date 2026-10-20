@@ -29,11 +29,13 @@ function load(): Promise<Handler> {
     if (!url) throw new Error("The run inspector (@workflow/web) is not installed with the workflow package. Run `npm install`.");
     const web = await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ url);
     const serve: Handler = await web.createWorkflowWebHandler({ basename: BASE });
-    // Its stylesheet loads the fonts from /assets/, outside the basename.
     return async (req: Request) => {
       const res = await serve(req);
-      if (res.status !== 200 || !res.headers.get("content-type")?.includes("text/css")) return res;
+      // Files come as a stream of the file that Next's compression closes twice (an uncaught ERR_INVALID_STATE per
+      // file in the dev log), so they are read whole; its stylesheet loads the fonts from /assets/, outside the basename.
+      if (res.status !== 200 || !/\.\w+$/.test(new URL(req.url).pathname) || req.method !== "GET") return res;
       const headers = new Headers(res.headers);
+      if (!headers.get("content-type")?.includes("text/css")) return new Response(await res.arrayBuffer(), { headers });
       headers.delete("content-length");
       return new Response((await res.text()).replaceAll("url(/assets/", `url(${BASE}/assets/`), { headers });
     };

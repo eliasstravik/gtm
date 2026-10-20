@@ -317,8 +317,11 @@ export async function record(input: { name: string }) {
             assert.ok(font.startsWith("/api/gtm/inspector/assets/"), `${f} loads ${font}`);
             assert.equal((await get(font)).status, 200, font);
           }
+          // As a browser asks for it: compressed, which once closed the file's stream twice (an uncaught error per file).
+          assert.equal((await get(f, { headers: { "accept-encoding": "gzip, br" } })).status, 200, `${f} compressed`);
         }
       }
+      assert.doesNotMatch(s.dev.output, /ReadableStream is already closed|ERR_INVALID_STATE/, "serving the inspector's files logged a stream error");
       // Its page reads and changes runs through one RPC endpoint; on 127.0.0.1 both pass (waking a finished run is a no-op).
       const rpc = (method) => get("/api/gtm/inspector/api/rpc", { method: "POST", body: { method, params: { runId: s.runId, resolveData: "none" } } });
       const read = await rpc("fetchRun"), wake = await rpc("wakeUpRun");
