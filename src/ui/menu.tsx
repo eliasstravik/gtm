@@ -1,5 +1,5 @@
 "use client";
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 /** Heroicons 16 solid: arrow-path, ellipsis-horizontal. */
 export const glyphs = {
@@ -21,12 +21,21 @@ export function place(trigger: HTMLElement, panel: HTMLElement, width: number, e
 
 /**
  * A button and its menu of actions, in the top layer: Escape, a click outside or picking an item closes it, and the
- * arrow keys move between items. Items are `role="menuitem"` buttons or links.
+ * arrow keys move between items. Items are `role="menuitem"` buttons or links. It follows its button as the window
+ * resizes or scrolls, and closes when the button is hidden (a narrower window folds it into another menu).
  */
 export function Menu({ label, className, trigger, children }: { label: string; className?: string; trigger: ReactNode; children: ReactNode }) {
   const id = useId(), button = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   const items = () => [...(panel.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+  const [open, setOpen] = useState(false);
   const position = () => button.current && panel.current && place(button.current, panel.current, panel.current.offsetWidth || 200, true);
+  useEffect(() => {
+    if (!open) return;
+    const follow = () => (button.current?.getClientRects().length ? position() : panel.current?.hidePopover());
+    addEventListener("resize", follow);
+    addEventListener("scroll", follow, true);
+    return () => { removeEventListener("resize", follow); removeEventListener("scroll", follow, true); };
+  }, [open]);
   function onKey(e: KeyboardEvent) {
     const all = items(), at = all.indexOf(document.activeElement as HTMLElement);
     const to = ({ ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: all.length - 1 } as Record<string, number>)[e.key];
@@ -40,7 +49,7 @@ export function Menu({ label, className, trigger, children }: { label: string; c
       <div id={id} ref={panel} popover="auto" role="menu" aria-label={label} className="menu" onKeyDown={onKey}
         // Placed before showing (no flash at the corner), then again with its real size.
         onBeforeToggle={(e) => e.newState === "open" && position()}
-        onToggle={(e) => { if (e.newState === "open") { position(); items()[0]?.focus(); } }}
+        onToggle={(e) => { setOpen(e.newState === "open"); if (e.newState === "open") { position(); items()[0]?.focus(); } }}
         onClick={(e) => (e.target as Element).closest('[role="menuitem"]') && panel.current?.hidePopover()}>
         {children}
       </div>
