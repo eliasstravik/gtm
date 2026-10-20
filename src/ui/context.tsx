@@ -8,7 +8,13 @@ type File = { path: string; title: string; description?: string };
 type Group = { name: string; files: File[] };
 type Item = { key: string; label: string; depth: number; file?: File };
 
-/** Tree rows: each folder once, files indented under it (paths arrive sorted). Skills are labelled by their name. */
+/** What an empty group says: what goes in it and how to add some. */
+const EMPTY: Record<string, [string, string]> = {
+  Context: ["No context yet.", "Who you sell to and how you sound. Ask your agent to write it."],
+  Skills: ["No skills yet.", "Skills teach your agent tasks it repeats. Ask your agent to add one."],
+};
+
+/** Tree rows: each folder once, files indented under it (paths arrive sorted), named without `.md`. Skills are labelled by their name. */
 function tree(group: Group): Item[] {
   const out: Item[] = [];
   let prev: string[] = [];
@@ -18,8 +24,8 @@ function tree(group: Group): Item[] {
     const dirs = parts.slice(1, -1); // under context/
     let i = 0;
     while (i < dirs.length && dirs[i] === prev[i]) i += 1;
-    for (; i < dirs.length; i += 1) out.push({ key: `${dirs.slice(0, i + 1).join("/")}/`, label: `${dirs[i]}/`, depth: i });
-    out.push({ key: file.path, label: parts.at(-1)!, depth: dirs.length, file });
+    for (; i < dirs.length; i += 1) out.push({ key: `${dirs.slice(0, i + 1).join("/")}/`, label: dirs[i], depth: i });
+    out.push({ key: file.path, label: parts.at(-1)!.replace(/\.md$/, ""), depth: dirs.length, file });
     prev = dirs;
   }
   return out;
@@ -56,7 +62,7 @@ export function ContextView() {
             {trees.map((g) => (
               <section key={g.name}>
                 <h2>{g.name}</h2>
-                {!g.files.length && <p className="dir">None yet</p>}
+                {!g.files.length && <div className="tree-empty">{(EMPTY[g.name] ?? ["None yet."]).map((t) => <p key={t}>{t}</p>)}</div>}
                 <ul>
                   {g.items.map((it) => (
                     <li key={it.key} style={{ "--depth": it.depth } as CSSProperties}>
@@ -76,16 +82,14 @@ export function ContextView() {
               <select className="file-pick" name="file" aria-label="File" value={path} onChange={(e) => go({ file: e.target.value })}>
                 {trees.map((g) => g.files.length > 0 && (
                   <optgroup key={g.name} label={g.name}>
-                    {g.items.flatMap((it) => it.file ? [<option key={it.key} value={it.file.path}>{g.name === "Skills" ? it.label : it.file.path.slice(8)}</option>] : [])}
+                    {g.items.flatMap((it) => it.file ? [<option key={it.key} value={it.file.path}>{g.name === "Skills" ? it.label : it.file.path.slice(8, -3)}</option>] : [])}
                   </optgroup>
                 ))}
               </select>
             )}
-            {!path ? <p className="notice">No context yet. Ask your agent to write it.</p> : !doc.data ? <Status state={doc} /> : <>
-              <div className="doc-head">
-                <span className="mono">{doc.data.path}</span>
-                {doc.data.githubUrl && <a href={doc.data.githubUrl} target="_blank" rel="noreferrer">Open on GitHub ↗</a>}
-              </div>
+            {/* Phones only: there the tree, which says what each empty group is for, is hidden. */}
+            {!path ? <p className="notice none">No context yet. Ask your agent to write it.</p> : !doc.data ? <Status state={doc} /> : <>
+              {doc.data.githubUrl && <div className="doc-head"><a href={doc.data.githubUrl} target="_blank" rel="noreferrer">Open on GitHub ↗</a></div>}
               <Markdown source={doc.data.markdown} lead={skill && (skill.description ?? null)} />
             </>}
           </article>
