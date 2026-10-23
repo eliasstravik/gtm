@@ -11,7 +11,7 @@ const STRIPE = "stripe-sender-secret-0123456789ab";
 const HOSTED = { VERCEL_ENV: "production", VERCEL_DEPLOYMENT_ID: "dpl_test", VERCEL_AUTOMATION_BYPASS_SECRET: AUTOMATION, GTM_HOOK_STRIPE_BYPASS: STRIPE,
   GTM_HOOK_GITHUB_BYPASS: "github-sender-secret-0123456789", CRON_SECRET: "cron-secret" };
 const VARS = ["VERCEL_ENV", "VERCEL_DEPLOYMENT_ID", "VERCEL_AUTOMATION_BYPASS_SECRET", "GTM_HOOK_STRIPE_BYPASS", "GTM_HOOK_GITHUB_BYPASS", "CRON_SECRET",
-  "GTM_ALLOWED_HOSTS", "NODE_ENV", "GTM_DEV"];
+  "GTM_ALLOWED_HOSTS", "NODE_ENV", "GTM_DEV", "GTM_BASE_PATH"];
 
 const route = (path, methods, access, extra = {}) => ({ path, methods, access, plugin: "p", key: `p:${path}`, ...extra });
 const manifest = {
@@ -68,6 +68,14 @@ test("local: loopback and allowed hosts read; cross-site POSTs, unknown hosts an
   assert.equal(await status(req("/api/gtm/inspector/run/x", { headers: { "x-forwarded-host": "box.tail1234.ts.net" } })), 403);
   assert.equal(await status(req("/api/gtm/cron/x")), 401, "cron needs CRON_SECRET, refused when unset");
   assert.equal(await status(req("/.well-known/workflow/v1/flow", { host: "box.tail1234.ts.net" })), 404);
+}));
+
+test("a base path: routes and pages are matched below it", () => withEnv({ GTM_BASE_PATH: "/acme" }, async () => {
+  assert.equal(await status(req("/acme/api/gtm/start/x", { method: "POST" })), 200);
+  assert.equal(await status(req("/acme/api/gtm/nothing")), 404);
+  assert.equal(await status(req("/acme/api/gtm/shell", { method: "POST" })), 405);
+  assert.equal(await status(req("/acme/workflows", { host: "evil.test" })), 403);
+  assert.equal(await status(req("/acme")), 200);
 }));
 
 test("hosted: pages and session routes refuse every bypass credential", () => withEnv(HOSTED, async () => {

@@ -174,6 +174,16 @@ test("generated files: a stale gtm/ fails, a leftover binding fails, and sync fi
   has((await check(dir)).errors, /package\.json's build script is "next build"/);
 });
 
+test(".gitignore: a missing line fails; a Vercel build without the file (as `vercel deploy` uploads it) passes", async () => {
+  const dir = project();
+  write(dir, { ".gitignore": "node_modules/\n" });
+  has((await check(dir)).errors, /\.gitignore lacks `\.env\*\.local`/);
+  fs.rmSync(path.join(dir, ".gitignore"));
+  has((await check(dir)).errors, /\.gitignore lacks/);
+  process.env.VERCEL = "1";
+  try { lacks((await check(dir)).errors, /\.gitignore/); } finally { delete process.env.VERCEL; }
+});
+
 test("an unknown plugin API version refuses to load, with a clear message", async () => {
   const dir = project({ "gtm.config.ts": config({ plugins: [...defaults, "{ name: 'future', api: 2 }"] }) });
   await assert.rejects(loadConfig(dir), /The future plugin speaks plugin API 2; this gtm speaks API 1/);

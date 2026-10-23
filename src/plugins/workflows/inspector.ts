@@ -5,8 +5,9 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { basePath } from "@eliasstravik/gtm/kit";
 
-const BASE = "/api/gtm/inspector";
+const BASE = `${basePath()}/api/gtm/inspector`;
 
 type Handler = (req: Request) => Promise<Response>;
 let handler: Promise<Handler> | undefined;

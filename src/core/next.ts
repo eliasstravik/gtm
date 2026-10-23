@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { allowedHosts } from "../kit/env.js";
+import { allowedHosts, basePath } from "../kit/env.js";
 import type { Manifest } from "./types.js";
 
 type Phase = string;
@@ -17,6 +17,9 @@ export function withGtm(config: ConfigInput = {}, gtm: { manifest: Manifest; tra
     let cfg = typeof config === "function" ? await config(phase, ctx) : config;
     const includes = { ...cfg.outputFileTracingIncludes };
     includes["/**/*"] = [...new Set([...(includes["/**/*"] ?? []), ...(gtm.trace ?? [])])];
+    const base = basePath();
+    if (base && !/^(\/[\w-]+)+$/.test(base)) throw new Error(`GTM_BASE_PATH must look like /acme, not ${base}`);
+    if (base) cfg = { ...cfg, basePath: cfg.basePath ?? base };
     cfg = { ...cfg, outputFileTracingIncludes: includes, allowedDevOrigins: [...new Set([...(cfg.allowedDevOrigins ?? []), ...allowedHosts()])] };
     for (const transform of gtm.transforms) {
       const next = transform(cfg);

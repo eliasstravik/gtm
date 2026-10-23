@@ -133,8 +133,9 @@ export async function rules(c: CheckCtx): Promise<CheckResult[]> {
   const proxy = read("proxy.ts"), route = read("app/api/gtm/[...path]/route.ts");
   if (proxy != null && !proxy.replace(/\s+/g, "").includes(`matcher:${MATCHER}`)) err("proxy.ts's matcher differs from gtm's.", SYNC);
   if (route != null && !/export const dynamic = "force-dynamic"/.test(route)) err("app/api/gtm/[...path]/route.ts is not force-dynamic.", SYNC);
-  const ignore = read(".gitignore") ?? "";
-  for (const line of readFileSync(join(packageRoot(), "starter", "gitignore"), "utf8").split("\n").filter(Boolean)) {
+  // `vercel deploy` uploads no .gitignore, so a Vercel build without one has nothing to check.
+  const ignore = read(".gitignore") ?? (process.env.VERCEL === "1" ? undefined : "");
+  if (ignore != null) for (const line of readFileSync(join(packageRoot(), "starter", "gitignore"), "utf8").split("\n").filter(Boolean)) {
     if (!ignore.split(/\r?\n/).includes(line)) err(`.gitignore lacks \`${line}\`.`, `add the line \`${line}\``);
   }
   for (const f of ["package.json", "AGENTS.md", "CLAUDE.md", "next.config.ts", ".env.example", "vercel.json", "public/_gtm/probe.txt", "workflows/index.ts"]) {

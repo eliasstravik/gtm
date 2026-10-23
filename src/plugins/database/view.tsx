@@ -1,11 +1,11 @@
 "use client";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ColumnChooser } from "./column-chooser.js";
-import { api, glyphs, Icon, Menu, Search, Status, time, useApi, useQuery } from "@eliasstravik/gtm/ui";
+import { api, apiUrl, glyphs, Icon, Menu, Search, Status, time, useApi, useQuery } from "@eliasstravik/gtm/ui";
 import "./data.css";
 
 type Page = { table: string; fields: { name: string; type: string }[]; columns: string[]; pinned: string | null; rows: unknown[][]; offset: number; total: number };
-type Database = { mode: "local" } | { mode: "link"; url: string | null; label: string; title: string };
+type Database = { mode: "local" | "none" } | { mode: "link"; url: string | null; label: string; title: string };
 
 /** Columns that carry a verdict: the grid shows them right after the name. */
 const SCORE = /(^|_)(score|verdict|priority|tier|fit|grade|rating)$/i;
@@ -166,7 +166,7 @@ export function DataView({ tables: only }: { tables?: string[] }) {
     try {
       const q = new URLSearchParams(filters);
       q.set("columns", cols.join(","));
-      const res = await fetch(`/api/gtm/data/${encodeURIComponent(table!)}/${format}?${q}`, { cache: "no-store" });
+      const res = await fetch(apiUrl(`data/${encodeURIComponent(table!)}/${format}?${q}`), { cache: "no-store" });
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `Export failed: ${res.status}.`);
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await res.blob()), download: `${table}.${format}` });
       a.click();

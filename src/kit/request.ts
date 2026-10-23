@@ -1,10 +1,10 @@
 /**
- * Request shapes shared by the proxy, the API router and Save: Vercel's protection bypass, its `_vercel_jwt` cookie
+ * Request shapes shared by the proxy and the API router: Vercel's protection bypass, its `_vercel_jwt` cookie
  * and the fail-closed probe. No imports, so it is safe in the proxy and in workflow scope.
  */
 export const BYPASS = "x-vercel-protection-bypass";
 const SET_BYPASS_COOKIE = "x-vercel-set-bypass-cookie";
-/** Served from `public/`, outside the proxy's matcher; requested by the fail-closed and Save probes. */
+/** Served from `public/`, outside the proxy's matcher; requested by the fail-closed probe. */
 export const PROBE_PATH = "/_gtm/probe.txt";
 /** Statuses that show Vercel's login stands in front of an anonymous request. */
 export const PROTECTED_STATUSES = [301, 302, 303, 307, 308, 401, 403];

@@ -35,6 +35,14 @@ export function appPort(env: Env = process.env): number {
   return port;
 }
 
+/**
+ * The app's sub-path, "" at the root: GTM_BASE_PATH (e.g. `/acme`, to share the local Console under a path), which
+ * withGtm makes Next's basePath. Inside Next it is the value Next inlined at build.
+ */
+export function basePath(env: Env = process.env): string {
+  return process.env.__NEXT_ROUTER_BASEPATH || value("GTM_BASE_PATH", env) || "";
+}
+
 /** Private hostnames the person admits to the local Console (GTM_ALLOWED_HOSTS, comma-separated, off by default). */
 export function allowedHosts(env: Env = process.env): string[] {
   return (value("GTM_ALLOWED_HOSTS", env) ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);

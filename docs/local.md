@@ -32,3 +32,10 @@ Host kept.
 Nothing there writes: `session` routes are read-only, and `automation` and `local` routes (start, run status, the run
 inspector, Open database) answer only on `127.0.0.1`/`localhost`, so nobody else runs stages on the owner's
 subscription. Run workflows on this machine with `npx gtm run`.
+
+## `GTM_BASE_PATH`
+
+Off by default. A sub-path such as `/acme` that the whole local app answers under (Next's `basePath`), for sharing the
+console on a path of a name that serves other things too:
+`tailscale serve --bg --set-path /acme http://127.0.0.1:$GTM_PORT/acme`, with the Tailscale name in
+`GTM_ALLOWED_HOSTS`. `gtm run` and `gtm dev` follow it. Set it in `.env.local` and restart `gtm dev`.

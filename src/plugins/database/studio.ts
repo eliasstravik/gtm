@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import pg from "pg";
-import { assertNotProduction, HttpError, isHosted, json, value } from "@eliasstravik/gtm/kit";
+import { assertNotProduction, HttpError, isHosted, json, loopback, value } from "@eliasstravik/gtm/kit";
 
 const STUDIO_PORT = 4983, READY = /https:\/\/local\.drizzle\.studio/;
 // Studio has an IPC channel to this server; when the server goes, however it goes, the channel closes and Studio exits.
@@ -18,9 +18,10 @@ type State = { url?: string; port?: Promise<number>; current?: number; child?: C
 // On globalThis, so a module reload in next dev still finds the one Studio.
 const state: State = ((globalThis as { __gtmStudio?: State }).__gtmStudio ??= {});
 
-/** GET /database (session) → what the button does here: `{ mode: "local" }`, or a link to the database's console. */
-export async function destination(): Promise<Response> {
-  if (!isHosted()) return json({ mode: "local" });
+/** GET /database (session) → what the button does here: `{ mode: "local" }` on this computer (none for allowed hosts), or
+ * a link to the database's console. */
+export async function destination(req: Request): Promise<Response> {
+  if (!isHosted()) return json({ mode: loopback(req) ? "local" : "none" });
   const neon = value("NEON_PROJECT_ID");
   if (neon) return json({ mode: "link", url: `https://console.neon.tech/app/projects/${encodeURIComponent(neon)}`, label: "Open in Neon", title: "This project's database in the Neon console" });
   // Neon accounts Vercel installed open Neon's console from the Storage tab.

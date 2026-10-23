@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { type CliCtx, loadEnv } from "@eliasstravik/gtm/cli";
-import { appPort, value } from "@eliasstravik/gtm/kit";
+import { appPort, basePath, value } from "@eliasstravik/gtm/kit";
 
 const USAGE = "Usage: gtm run <workflow> [--input <json>] [--preview] [--approve --max-usd <n> [--note <text>]] [--prod] [--no-wait]";
 
@@ -26,7 +26,7 @@ export default async function run(args: string[], ctx: CliCtx): Promise<void> {
   try { input = values.input === undefined ? undefined : JSON.parse(values.input); }
   catch { throw new Error(`--input must be JSON, e.g. --input '{"limit":5}'`); }
   const headers: Record<string, string> = { "content-type": "application/json", "x-gtm-client": "cli" };
-  let base = `http://127.0.0.1:${appPort()}`;
+  let base = `http://127.0.0.1:${appPort()}${basePath()}`;
   if (values.prod) {
     const url = value("GTM_PRODUCTION_URL"), secret = value("GTM_BYPASS_SECRET");
     if (!url || !secret) throw new Error("--prod needs GTM_PRODUCTION_URL and GTM_BYPASS_SECRET in .env.local (`npx gtm docs deploy`).");
@@ -60,7 +60,7 @@ export default async function run(args: string[], ctx: CliCtx): Promise<void> {
       costUsd: cost, ...((state.unmetered ?? r.unmetered) > 0 && { unmeteredCalls: state.unmetered ?? r.unmetered }) };
     if (values.preview) out.children = (state.tree as Row[]).map((c) => ({ runId: c.id, workflow: c.workflow, status: c.status, returnValue: c.returnValue ?? null, error: c.error ?? null }));
     console.log(JSON.stringify(out, null, 2));
-    if (values.preview) console.error(`Preview total: $${(cost ?? 0).toFixed(4)}${out.unmeteredCalls ? ` plus ${out.unmeteredCalls} call(s) on your plan, not metered` : ""}. Show it to the person and ask Yes/No before --approve.`);
+    if (values.preview) console.error(`Preview total: ${cost && cost < 0.0001 ? "under $0.0001" : `$${(cost ?? 0).toFixed(4)}`}${out.unmeteredCalls ? ` plus ${out.unmeteredCalls} call(s) on your plan, not metered` : ""}. Show it to the person and ask Yes/No before --approve.`);
     if (r.status !== "completed") process.exitCode = 1;
     return;
   }

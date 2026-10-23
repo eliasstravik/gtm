@@ -3,7 +3,7 @@ import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
 import { createRequire } from "node:module";
 import { constants } from "node:os";
 import { dirname, join } from "node:path";
-import { appPort, value } from "../kit/env.js";
+import { appPort, basePath, value } from "../kit/env.js";
 import { CONFIG, loadConfig, projectJiti } from "./config.js";
 import { findProject, loadEnv } from "./project.js";
 import { byNeeds, sync } from "./sync.js";
@@ -47,7 +47,7 @@ export async function dev(args: string[]): Promise<void> {
   }
   const watchers = watchConfig(dir);
   const child = spawn(process.execPath, [next, "dev", "-H", "127.0.0.1", "-p", String(port), ...args],
-    { cwd: dir, env: { ...env, PORT: String(port), WORKFLOW_LOCAL_BASE_URL: `http://127.0.0.1:${port}` }, stdio: "inherit" });
+    { cwd: dir, env: { ...env, PORT: String(port), WORKFLOW_LOCAL_BASE_URL: `http://127.0.0.1:${port}${basePath()}` }, stdio: "inherit" });
   const forward = (signal: NodeJS.Signals) => child.kill(signal);
   for (const signal of SIGNALS) process.on(signal, forward);
   for (const h of handles) h.started?.();

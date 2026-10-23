@@ -1,5 +1,5 @@
 import { routeAccess, pageAccess, secretName } from "../kit/access.js";
-import { isHosted, LOOPBACK_HOSTS } from "../kit/env.js";
+import { basePath, isHosted, LOOPBACK_HOSTS } from "../kit/env.js";
 import { decodePath, find } from "../kit/patterns.js";
 import { carriesBypass, PROBE_PATH, PROTECTED_STATUSES, requestHost } from "../kit/request.js";
 import type { Manifest } from "./types.js";
@@ -30,7 +30,7 @@ async function unprotected(host: string): Promise<boolean> {
   const hit = probes.get(host);
   if (hit && Date.now() - hit.at < PROBE_TTL_MS) return hit.open;
   probes.delete(host);
-  const open = fetch(`https://${host}${PROBE_PATH}`, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(5000) })
+  const open = fetch(`https://${host}${basePath()}${PROBE_PATH}`, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(5000) })
     .then(async (res) => { await res.body?.cancel(); return !PROTECTED_STATUSES.includes(res.status); })
     .catch(() => { probes.delete(host); return true; });
   probes.set(host, { at: Date.now(), open });
@@ -53,7 +53,8 @@ async function failClosed(req: Request): Promise<Response | undefined> {
  */
 export function gtmProxy(manifest: Manifest) {
   return async function proxy(req: Request): Promise<Response | undefined> {
-    const url = new URL(req.url), path = url.pathname, hosted = isHosted();
+    const base = basePath(), full = new URL(req.url).pathname, hosted = isHosted();
+    const path = base && full.startsWith(base) ? full.slice(base.length) || "/" : full;
     if (path === PROBE_PATH) return undefined;
     if (path.startsWith("/.well-known/workflow/")) {
       if (!hosted) {
