@@ -2,9 +2,9 @@
 
 **The open-source agent plugin that runs your GTM.**
 
-Add it to Claude Code, Codex or Cursor and say "set up GTM for Acme". Your agent builds the workflows. gtm runs them on
-Vercel, keeps a record of every run and dollar, and gives your team a console. Your repo, your keys, and every part is a
-plugin.
+Add it to Claude Code, Codex, Copilot CLI or Cursor and say "set up GTM for Acme". Your agent builds the workflows. gtm
+runs them on Vercel, keeps a record of every run and dollar, and gives your team a console. Your repo, your keys, and
+every part is a plugin.
 
 ```sh
 npx skills add eliasstravik/gtm -g     # the skill, for any agent
@@ -12,8 +12,15 @@ npx skills add eliasstravik/gtm -g     # the skill, for any agent
 npm run dev                            # in ./gtm-acme: the console on http://127.0.0.1:3000
 ```
 
-In Claude Code you can install it as a plugin instead: `/plugin marketplace add eliasstravik/gtm`, then
-`/plugin install gtm@eliasstravik` (or `npx plugins add eliasstravik/gtm` for hosts that read `plugin.json`).
+Or install it as your agent's plugin:
+
+| Agent | Install |
+| --- | --- |
+| Claude Code | `/plugin marketplace add eliasstravik/gtm`, then `/plugin install gtm@eliasstravik` |
+| Codex | `codex plugin marketplace add eliasstravik/gtm`, then `codex plugin add gtm@eliasstravik` |
+| GitHub Copilot CLI | `copilot plugin marketplace add eliasstravik/gtm`, then `copilot plugin install gtm@eliasstravik` |
+| Cursor | `git clone https://github.com/eliasstravik/gtm ~/.cursor/plugins/local/gtm`, then **Developer: Reload Window** |
+| Any host that reads `plugin.json` | `npx plugins add eliasstravik/gtm` |
 
 ## What it is
 

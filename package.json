@@ -19,7 +19,8 @@
     "skills",
     "src/plugins",
     "plugin.json",
-    ".claude-plugin"
+    ".claude-plugin",
+    ".cursor-plugin"
   ],
   "exports": {
     ".": {
