@@ -23,7 +23,11 @@ json("plugin.json", (p) => { p.version = next; });
 json(".claude-plugin/plugin.json", (p) => { p.version = next; });
 json(".cursor-plugin/plugin.json", (p) => { p.version = next; });
 json(".github/plugin/marketplace.json", (p) => { for (const entry of p.plugins) entry.version = next; });
-json("starter/package.json", (p) => { p.dependencies["@eliasstravik/gtm"] = next; });
+// The starter keeps its range prefix (^0.0.5 → ^0.0.6).
+json("starter/package.json", (p) => {
+  const deps = p.dependencies;
+  deps["@eliasstravik/gtm"] = `${/^[\^~]?/.exec(deps["@eliasstravik/gtm"])[0]}${next}`;
+});
 const readme = readFileSync("README.md", "utf8");
 writeFileSync("README.md", readme.replaceAll(`tree%2Fv${before}%2F`, `tree%2Fv${next}%2F`).replaceAll(`at \`v${before}\``, `at \`v${next}\``));
 console.log(`Version ${before} → ${next} in package.json, package-lock.json, the plugin manifests, starter/package.json and README.md.`);

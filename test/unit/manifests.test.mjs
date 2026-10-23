@@ -58,6 +58,8 @@ test("npm run version:bump moves every manifest", () => {
     for (const file of marketplaces) {
       for (const entry of json(file, dir).plugins) if ("version" in entry) assert.equal(entry.version, "9.9.9", file);
     }
+    const pin = json("starter/package.json").dependencies["@eliasstravik/gtm"].replace(/[\d.]+.*$/, "");
+    assert.equal(json("starter/package.json", dir).dependencies["@eliasstravik/gtm"], `${pin}9.9.9`, "the starter keeps its range");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
