@@ -30,8 +30,10 @@ create table gtm_ledger.actions (
   cost_usd numeric(12,6),              -- null when unmetered or unknown
   outcome text not null check (outcome in ('reserved','ok','failed','blocked','unknown')),
   detail jsonb not null default '{}',  -- no secrets, no personal data beyond keys
-  idempotency_key text unique,
-  created_at timestamptz not null default now()
+  idempotency_key text,
+  attempt int not null default 1,      -- a key's attempts: a new row after each failed one
+  created_at timestamptz not null default now(),
+  unique (idempotency_key, attempt)
 );
 create table gtm_ledger.meta (key text primary key, value text not null);
 insert into gtm_ledger.meta values ('reconcile_at', '-infinity'), ('reconcile_cursor', '-infinity');

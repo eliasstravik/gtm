@@ -230,13 +230,11 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           const [limits, rootLimits] = [await limitsFor(run.workflow), await limitsFor(root.workflow)];
           if ((limits.approval.required || rootLimits.approval.required) && root.approvedMaxUsd == null && !root.preview) return block(NEEDS_YES);
           // Same-key repeats: after `ok` nothing runs again; a reservation left open by an earlier attempt of the same step
-          // (a crash mid-call) runs again against it, never above it; after `failed` a new attempt row `<key>#<n>` reserves
+          // (a crash mid-call) runs again against it, never above it; after `failed` the key's next attempt row reserves
           // and counts again. Any other call (another run, another step, or the same attempt at once) never borrows it.
-          let key = action.idempotencyKey;
-          const like = `${key.replace(/[\\%_]/g, "\\$&")}#%`;
-          const tries = await rows(sql`select id, run_id, outcome, reserved_usd::float8 as reserved, detail->'holder' as holder from gtm_ledger.actions
-            where idempotency_key = ${key} or idempotency_key like ${like} order by id desc`, tx);
-          const last = tries[0];
+          const key = action.idempotencyKey;
+          const last = await one(sql`select id, run_id, outcome, attempt, reserved_usd::float8 as reserved, detail->'holder' as holder from gtm_ledger.actions
+            where idempotency_key = ${key} order by attempt desc limit 1`, tx);
           if (last?.outcome === "ok") return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "ok" };
           if (last?.outcome === "reserved" || last?.outcome === "unknown") {
             if (last.run_id !== run.id) return block(`The key ${key} is reserved by another run that has not finished; use a key of this run's own.`);
@@ -246,7 +244,6 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
             await tx.execute(sql`update gtm_ledger.actions set detail = detail || ${JSON.stringify({ holder: by })}::jsonb where id = ${last.id}`);
             return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "reserved" };
           }
-          if (last) key = `${key}#${tries.length + 1}`;
           const tree = await one(sql`select ${SPENT} as usd, count(*) filter (where outcome <> 'blocked') as calls from gtm_ledger.actions where root_run_id = ${root.id}`, tx);
           const treeUsd = Number(tree.usd);
           if (root.preview) {
@@ -263,9 +260,9 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
             if (wf + est > limits.perMonthUsd) return block(`${run.workflow} would pass its $${limits.perMonthUsd} monthly budget ($${wf.toFixed(2)} spent).`);
             if (all + est > limits.projectMonthUsd) return block(`The project would pass its $${limits.projectMonthUsd} monthly budget ($${all.toFixed(2)} spent).`);
           }
-          const r = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, reserved_usd, outcome, detail, idempotency_key)
+          const r = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, reserved_usd, outcome, detail, idempotency_key, attempt)
             values (${run.id}, ${root.id}, ${run.workflow}, ${action.plugin}, ${action.kind}, ${action.target ?? null}, ${JSON.stringify(action.keys ?? {})}::jsonb,
-              ${est}, 'reserved', ${redactJson(ctx, { ...action.detail, ...(action.holder && { holder: action.holder }) })}::jsonb, ${key}) returning id`, tx);
+              ${est}, 'reserved', ${redactJson(ctx, { ...action.detail, ...(action.holder && { holder: action.holder }) })}::jsonb, ${key}, ${(last?.attempt ?? 0) + 1}) returning id`, tx);
           return { ok: true, id: String(r.id), runId: run.id, rootId: root.id };
         });
       } catch (error) {

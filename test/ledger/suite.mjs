@@ -178,7 +178,7 @@ export async function suite({ url, concurrent }) {
     await ledger.settle(first.id, { outcome: "failed" });
     const retry = await spend(run, 0.2, key);
     assert.ok(retry.ok && !retry.repeat && retry.id !== first.id, "after failed: a new attempt row");
-    assert.equal((await q("select idempotency_key from gtm_ledger.actions where id = $1", [retry.id]))[0].idempotency_key, `${key}#2`);
+    assert.deepEqual((await q("select idempotency_key, attempt from gtm_ledger.actions where id = $1", [retry.id]))[0], { idempotency_key: key, attempt: 2 });
     await ledger.settle(retry.id, { costUsd: 0.15, outcome: "ok" });
     assert.equal((await spend(run, 0.2, key)).repeat, "ok", "after ok: done-before");
     const failed = (await q("select cost_usd, reserved_usd::float8 as r from gtm_ledger.actions where id = $1", [first.id]))[0];
@@ -192,6 +192,23 @@ export async function suite({ url, concurrent }) {
     await ledger.settle(unmetered.id, { costUsd: null, outcome: "ok" });
     const got = await ledger.getRun(run.runId);
     assert.equal(got.unmetered, 1);
+  });
+
+  test("distinct keys each run, even when one looks like another's retry", async () => {
+    const run = await begin({ workflow: wf(), input: {}, trigger: "cli" });
+    const base = `invoice:${randomUUID()}`;
+    for (const key of [`${base}#2`, base, `${base}#%`, `${base}_`]) {
+      const r = await spend(run, 0.1, key);
+      assert.ok(r.ok && !r.repeat, `${key} reserves its own row`);
+      await ledger.settle(r.id, { costUsd: 0.1, outcome: "ok" });
+    }
+    const failed = await spend(run, 0.1, `${base}:b`);
+    await ledger.settle(failed.id, { outcome: "failed" });
+    const plain = await spend(run, 0.1, `${base}:b#2`);
+    assert.ok(plain.ok && !plain.repeat, "a key shaped like another's next attempt is still its own key");
+    const again = await spend(run, 0.1, `${base}:b`);
+    assert.ok(again.ok && !again.repeat && ![failed.id, plain.id].includes(again.id), "and the failed key's retry gets its own attempt row");
+    assert.equal((await spend(run, 0.1, `${base}#2`)).repeat, "ok", "a finished key is still done-before");
   });
 
   test("the spend-point rule: children of unapproved roots, external runs and re-runs that copy attributes are refused", async () => {
