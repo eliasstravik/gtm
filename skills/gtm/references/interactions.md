@@ -48,17 +48,24 @@ Created B2B SaaS. What next?
 
 ## Risky run
 
-**Setup:** The workflow Score inbound accounts calls a paid enrichment API per row.
+**Setup:** The workflow Score inbound accounts calls a paid enrichment API per row; its registry entry has
+`approval: { required: true }`.
 
 **Human:** Run Score inbound accounts on last month's 800 signups.
 
-**Agent:** The 10-row preview scored 7 of 10 as a fit; the full run of 800 costs about $12 in enrichment and model
-calls. Start it?
+**Agent:** Running a preview on last month's signups first; about a minute.
+
+The preview scored 3 sample signups: 2 fit. The full run of 800 costs about $12 in enrichment and model calls; I will
+cap it at $15. Run Score inbound accounts on all 800 signups, up to $15?
 
 Options: Yes; No.
 
 **Human:** Yes.
 
-**Agent:** Running Score inbound accounts on 800 signups; about 20 minutes.
+**Agent:** Running Score inbound accounts on 800 signups, up to $15; about 20 minutes.
 
-Done. 512 of 800 fit; the Data view's qualified_companies table has every verdict.
+Done. 512 of 800 fit, for $11.40; the Data view's qualified_companies table has every verdict.
+
+**Commands:**
+- `npx gtm run score-inbound --input '{"month":"2026-09"}' --preview`
+- after the Yes: `npx gtm run score-inbound --input '{"month":"2026-09"}' --approve --max-usd 15 --note "Yes in chat"`

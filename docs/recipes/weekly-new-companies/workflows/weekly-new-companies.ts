@@ -1,4 +1,4 @@
-import { db } from "@eliasstravik/gtm/db";
+import { db } from "#gtm/database";
 import { sql } from "drizzle-orm";
 import { companies, weeklyNewCompanies } from "../db/schema";
 

@@ -1,6 +1,6 @@
 # Interaction rules
 
-Every reply about a gtm project follows these rules, in Claude Code, Codex, Cursor or the Slack thread. Structured
+Every reply about a gtm project follows these rules, in Claude Code, Codex or Cursor. Structured
 choices use the host's native question tool, such as AskUserQuestion, request_user_input or eve's ask_question. Open
 text and file requests appear directly in the conversation and wait for a normal reply or attachment. Never put a
 Type your answer, Upload file or similar button between the request and the reply. Use a typed choice list only
@@ -33,7 +33,7 @@ when the host has no question tool.
    choices. Name the concrete action, target and consequence (for a run, its cost). The original request does not
    replace this confirmation. Execute only after Yes for that pending action; No cancels, and no response leaves it
    unexecuted. Bind the response to the pending request and exact action and target; stale, duplicate, unrelated or
-   changed-action responses authorize nothing. In Slack only the approval card is a yes. Do not mark Yes recommended
+   changed-action responses authorize nothing. Do not mark Yes recommended
    or add another choice. This rule takes precedence over direct-action and prior-authorization shortcuts elsewhere.
 5. Before an authorized write, state what will change as work under way, such as "Building it now; about a minute."
    A destructive write starts only after rule 4's confirmation.
@@ -41,5 +41,9 @@ when the host has no question tool.
    restoration (git history). Name GitHub, repositories, folders or commands only when an action or problem requires
    them.
 
-Secret values are never asked for or pasted in chat: people add them in the Console's Connections view
-(docs: connections).
+Secret values are never asked for or pasted in chat: hand the person `npx gtm connections set <NAME>` (a hidden
+prompt) for a local key, and `vercel env add <NAME> production --sensitive` for a live one (docs: connections).
+
+A risky or costly run's yes rests on a preview: run it with `--preview`, show its sample and cost, ask Yes/No, and
+only after Yes run it with `--approve --max-usd <the cap you quoted>`. The agent can technically approve on its own;
+it never does (docs: ledger).

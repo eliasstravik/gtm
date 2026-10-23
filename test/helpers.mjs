@@ -1,5 +1,5 @@
 /**
- * Harness for the §7 acceptance checks: pack the package, create a project from the tarball, run commands with an
+ * Harness for the acceptance checks: pack the package, create a project from the tarball, run commands with an
  * empty environment, start and stop long-running servers, send raw HTTP (custom Host), list listening sockets.
  * Linux only (`ss`, /proc). Nothing here talks to anything but the npm registry and 127.0.0.1.
  */
@@ -49,11 +49,12 @@ function killGroup(pid, signal) {
  * Runs a command to completion. Resolves (never rejects on a non-zero exit) with code, stdout, stderr, output.
  * Leftover processes in its group are killed and reported, so a command cannot leave a server behind unnoticed.
  */
-export function run(cmd, args, { cwd = REPO, env = cleanEnv(), timeout = 10 * MIN, name } = {}) {
+export function run(cmd, args, { cwd = REPO, env = cleanEnv(), timeout = 10 * MIN, name, input } = {}) {
   return new Promise((resolve, reject) => {
     const log = openLog(name ?? `${path.basename(cmd)}-${args.filter((a) => !a.startsWith("-"))[0] ?? ""}`);
     fs.writeSync(log.fd, `$ ${[cmd, ...args].join(" ")}\n# cwd ${cwd}\n# env ${Object.keys(env).join(" ")}\n`);
-    const child = spawn(cmd, args, { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, { cwd, env, detached: true, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    if (input !== undefined) child.stdin.end(input);
     let stdout = "", stderr = "", output = "", timedOut = false, done = false;
     const add = (which) => (d) => {
       const s = d.toString();
@@ -302,7 +303,7 @@ export async function extractCli(tarball, work) {
   const modules = path.join(REPO, "node_modules");
   if (fs.existsSync(modules)) fs.symlinkSync(modules, path.join(pkg, "node_modules"));
   else assertOk(await run("npm", ["install", "--omit=dev", "--no-audit", "--no-fund"], { cwd: pkg, name: "cli-install" }));
-  return path.join(pkg, "dist", "cli.js");
+  return path.join(pkg, "dist", "core", "cli.js");
 }
 
 /** Snapshot of a project tree: relative path → content hash, "dir", or "-> <link target>". */
@@ -351,49 +352,4 @@ export async function httpsStub(work, port, handler) {
   const server = https.createServer({ key: fs.readFileSync(key), cert: fs.readFileSync(cert) }, handler);
   await new Promise((resolve, reject) => server.once("error", reject).listen(port, "127.0.0.1", resolve));
   return { caFile: cert, close: () => new Promise((r) => server.close(r)) };
-}
-
-/**
- * A stand-in for Vercel behind `httpsStub`: the login wall (`/_gtm/probe.txt` answers 200 with the probe text only to a
- * request carrying `cookie`, else 401) and the REST calls Connections makes, which test/vercel-fetch.mjs sends here.
- * `state.envs` are the project's variables, `state.values` what saves sent (dummy values only), `state.calls` each
- * call as "METHOD /path"; `state.redeploy = "fail"` makes redeploys fail, `state.release` is every redeploy's readyState.
- */
-export function vercelStub({ project = "prj_test", team = "team_test", deployment = "dpl_test", cookie }) {
-  const state = { envs: [], values: {}, calls: [], redeploy: "ok", release: "READY", next: 0 };
-  const send = (res, status, body) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
-  const handler = (req, res) => {
-    const url = new URL(req.url, "https://stub"), p = url.pathname;
-    if (p === "/_gtm/probe.txt") {
-      const ok = Boolean(cookie) && (req.headers.cookie ?? "").includes(cookie);
-      return void res.writeHead(ok ? 200 : 401, { "content-type": "text/plain" }).end(ok ? "gtm-probe-v1\n" : "Authentication Required");
-    }
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => {
-      const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
-      state.calls.push(`${req.method} ${p}`);
-      const id = /^\/v9\/projects\/[^/]+\/env\/([^/]+)$/.exec(p)?.[1], row = state.envs.find((e) => e.id === id);
-      if (req.method === "GET" && p === `/v9/projects/${project}`) return send(res, 200, { id: project, name: "gtm-acme", accountId: team, autoAssignCustomDomains: true });
-      if (req.method === "GET" && p === `/v13/deployments/${deployment}`) return send(res, 200, { projectId: project, inspectorUrl: `https://vercel.com/acme/gtm-acme/${deployment}` });
-      if (req.method === "GET" && p.startsWith("/v13/deployments/dpl_new")) return send(res, 200, { projectId: project, readyState: state.release, readySubstate: "PROMOTED" });
-      if (req.method === "GET" && p === `/v10/projects/${project}/env`) return send(res, 200, { envs: state.envs });
-      if (req.method === "POST" && p === `/v10/projects/${project}/env` && url.searchParams.get("upsert") === "true") {
-        state.values[body.key] = body.value;
-        const old = state.envs.find((e) => e.key === body.key && [e.target].flat().includes("production"));
-        if (old) Object.assign(old, { comment: body.comment ?? old.comment, type: body.type });
-        else state.envs.push({ id: `env_${body.key}`, key: body.key, type: body.type, target: body.target, comment: body.comment ?? "" });
-        return send(res, 201, { created: { key: body.key } });
-      }
-      if (req.method === "PATCH" && row) return send(res, 200, Object.assign(row, { comment: body.comment }));
-      if (req.method === "DELETE" && row) { state.envs.splice(state.envs.indexOf(row), 1); return send(res, 200, { id: row.id }); }
-      if (req.method === "GET" && p === "/v6/deployments") return send(res, 200, { deployments: [{ uid: deployment, url: "gtm-acme.example.com", readyState: "READY" }] });
-      if (req.method === "POST" && p === "/v13/deployments") {
-        if (state.redeploy === "fail") return send(res, 500, { error: { code: "internal_server_error" } });
-        return send(res, 200, { id: `dpl_new${++state.next}`, url: "gtm-acme-new.example.com", readyState: "QUEUED" });
-      }
-      send(res, 404, { error: { code: "not_found" } });
-    });
-  };
-  return { state, handler };
 }

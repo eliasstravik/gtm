@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+// A stand-in for `claude -p --output-format json` in the acceptance tests: it answers each stage from its JSON schema
+// (strings echo the start of the prompt), reports a plan cost and never touches the network.
+const args = process.argv.slice(2);
+let stdin = "";
+process.stdin.on("data", (d) => (stdin += d)).on("end", () => {
+  const at = args.indexOf("--json-schema"), schema = at >= 0 ? JSON.parse(args[at + 1]) : undefined;
+  const prompt = stdin.split("\n---\n").at(-1).trim();
+  const fill = (s) => {
+    if (!s || typeof s !== "object") return null;
+    if (s.enum) return s.enum[0];
+    const type = Array.isArray(s.type) ? s.type.find((t) => t !== "null") : s.type;
+    if (s.anyOf) return fill(s.anyOf.find((x) => x.type !== "null") ?? s.anyOf[0]);
+    if (type === "object") return Object.fromEntries(Object.entries(s.properties ?? {}).map(([k, v]) => [k, fill(v)]));
+    if (type === "array") return [fill(s.items)];
+    if (type === "number" || type === "integer") return 1;
+    if (type === "boolean") return true;
+    if (type === "string") return `echo:${prompt.slice(0, 40)}`;
+    return null;
+  };
+  const value = schema ? fill(schema) : undefined;
+  process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 1, total_cost_usd: 0.0123,
+    result: schema ? JSON.stringify(value) : `echo:${prompt.slice(0, 40)}`, ...(schema && { structured_output: value }),
+    usage: { input_tokens: 10, output_tokens: 5 } }));
+});

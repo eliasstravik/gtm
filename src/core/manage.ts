@@ -53,7 +53,8 @@ function sourceOf(dir: string, name: string): { src: string; version: string } {
   return { src, version: readJson(join(root, "package.json"))?.version ?? "unknown" };
 }
 
-/** Copies a plugin's source to `to`, its own package subpaths turned into project paths under plugins/<name>/. */
+/** Copies a plugin's source to `to`, its own package subpaths turned into project paths under plugins/<name>/, and its
+ * relative imports without `.js`. */
 function copyPlugin(src: string, to: string, name: string): void {
   rmSync(to, { recursive: true, force: true });
   cpSync(src, to, { recursive: true });
@@ -61,7 +62,9 @@ function copyPlugin(src: string, to: string, name: string): void {
     if (!/\.(ts|tsx)$/.test(f)) continue;
     const file = join(to, f), text = readFileSync(file, "utf8");
     const own = (sub: string) => new RegExp(`${PACKAGE.replace("/", "\\/")}/${sub}(?=[/"'#\`])`, "g");
-    const next = text.replace(own(`src/plugins/${name}`), `./plugins/${name}`).replace(own(name), `./plugins/${name}`);
+    // Relative imports lose their `.js`: the package compiles with NodeNext, a project's bundler resolves `./x` to x.ts.
+    const next = text.replace(own(`src/plugins/${name}`), `./plugins/${name}`).replace(own(name), `./plugins/${name}`)
+      .replace(/((?:from|import)\s*\(?\s*["'])(\.{1,2}\/[^"']+?)\.js(["'])/g, "$1$2$3");
     if (next !== text) writeFileSync(file, next);
   }
 }

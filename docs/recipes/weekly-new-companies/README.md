@@ -30,7 +30,7 @@ scheduled job: a workflow that takes no input, registered by name, plus one cron
 
 ## How to
 
-1. Copy the files, then `npm run db:generate` and `npm run db:migrate`.
-2. Try it locally, where nothing fires on its own: `npx @eliasstravik/gtm run weekly-new-companies`.
-3. The schedule runs only in production, with `CRON_SECRET` set (deploy.md). It costs nothing, so its yes is the
+1. Copy the files, then `npm run db:generate` and `npx gtm migrate`.
+2. Try it locally, where nothing fires on its own: `npx gtm run weekly-new-companies`.
+3. The schedule runs only in production, with `CRON_SECRET` set (`npx gtm docs deploy`). It costs nothing, so its yes is the
    person asking for the schedule; a schedule that does cost something quotes cost per run × runs per month first.

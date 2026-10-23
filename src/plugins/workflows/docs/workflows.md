@@ -1,29 +1,14 @@
 # Workflows
 
 Ready-made workflows (import a list, enrich companies, a weekly scheduled job) are recipes to copy when a person
-asks for one: recipes.md.
+asks for one: `npx gtm docs recipes`.
 
 ## The registry
 
 `workflows/index.ts` exports `workflows = { <name>: workflowFn }` (typed `satisfies Registry`, from
-`@eliasstravik/gtm/api`). The key is the workflow's name everywhere: `npx @eliasstravik/gtm run <name>`,
-`/api/gtm/start/<name>`, `/api/gtm/cron/<name>` and the Console. gtm starts only registered workflows;
-`npx @eliasstravik/gtm check` reports a broken registry.
-
-## What the Console shows about a workflow
-
-An entry can also be `{ run: workflowFn, description, tables, connections, diagram }`; every field but `run` is
-optional and none changes how the workflow runs. The workflow's page in the Console has four tabs:
-
-- **Diagram**: `description` (one or two plain sentences: what it does, for whom, its limits), how it starts, and
-  `diagram`, the business steps as `{ nodes: [{ id, label, kind, explanation, details }], edges: [{ source,
-  target, label }] }`. `kind` is `input`, `action`, `decision` or `output`; a decision's edges carry labels ("Yes",
-  "No"); `details` is a few short `{ name: text }` facts (provider, caching, limits). Write it for the GTM team,
-  not as code; update it in the same change as the workflow. Hosted from GitHub, **View source** opens the
-  workflow's file at the deployed commit; locally **Copy file path** copies it.
-- **Runs**: this workflow's runs.
-- **Data**: the tables it writes, named in `tables` (schema `public`).
-- **Connections**: the `.env.example` names it reads, in `connections`, set or missing here.
+`@eliasstravik/gtm`). The key is the workflow's name everywhere: `npx gtm run <name>`, `/api/gtm/start/<name>`,
+`/api/gtm/cron/<name>`, `fanOut()` and the console. gtm starts only registered workflows; `npx gtm check` reports a
+broken registry. An entry can also be an object:
 
 ```ts
 export const workflows = {
@@ -40,90 +25,80 @@ export const workflows = {
       ],
       edges: [{ source: "in", target: "fit" }, { source: "fit", target: "save", label: "Yes" }],
     },
+    approval: { required: true },                  // spends nothing without a recorded yes (docs: ledger)
+    budget: { perRunUsd: 5, perMonthUsd: 50 },     // caps every run of it, children included, and its month
   },
 } satisfies Registry;
 ```
 
-The Workflows list shows each workflow with a dot for its newest run (hover for when; hollow: never run) and
-searches names, descriptions, tables and connections. Runs lists every run; a run's steps, inputs, outputs
-and errors are in the Workflow SDK's run inspector: **Open in Workflow** locally (`/api/gtm/inspector`, on the
-same dev server), **Open in Vercel** hosted (the project's Workflows page in Vercel's dashboard). The local
-inspector can replay or cancel a run, but only on `127.0.0.1`/`localhost`.
+- `description`, `tables`, `connections` and `diagram` are what the console shows; none changes how it runs.
+  `diagram` holds the business steps (`kind`: `input`, `action`, `decision` or `output`; a decision's edges carry
+  labels). Write it for the GTM team, not as code, and update it in the same change as the workflow.
+- `approval`, `budget` and `schedule` are what the ledger enforces (docs: ledger). Mark every workflow that spends
+  money or acts on people as `approval: { required: true }`.
+
+The console's workflow page has a tab per plugin: Diagram, Runs (from the ledger: status, cost, approval), Data
+(the `tables`) and Connections (the `connections`, set or missing here).
 
 ## Results and runs
 
-- A workflow writes its lasting results to its own tables in `public` through `db()` (data.md).
-- Runs live only in the Workflow SDK's run store (`.next/workflow-data/` locally, which a local `next build`
-  wipes; 7 days on Vercel Pro). There is no run-history table; the Workflows view shows what the store keeps.
-- Schedules: `vercel.json` crons whose path is `/api/gtm/cron/<name>`. Vercel Cron runs them in production
-  only, with `CRON_SECRET`; the route refuses when it is unset. A cron run gets no input.
-  Locally nothing fires on its own; start it with
-  `npx @eliasstravik/gtm run <name>`.
+- A workflow writes its lasting results to the company's own tables in `public` through `db()` (docs: data).
+- The ledger records every run, child and refused start in Postgres (`gtm_ledger.runs`), with costs and approvals,
+  long after the Workflow SDK's own run store forgets them. A run's steps, inputs and errors are in the SDK's run
+  inspector: **Open in Workflow** locally, **Open in Vercel** hosted.
+- Schedules: `vercel.json` crons whose path is `/api/gtm/cron/<name>`. Vercel Cron runs them in production only, with
+  `CRON_SECRET`. A cron run gets no input. A schedule of an approval-required workflow also needs its approval
+  committed in the registry (docs: ledger). Locally nothing fires on its own; start it with `npx gtm run <name>`.
+
+## Helpers from `#gtm/workflows`
+
+- `fanOut(items, "<child workflow>", { batchSize = 20 })` (workflow scope) starts the child once per item, one step
+  per batch, and returns the child run ids without waiting. Children write their results to the company's tables. A
+  retried batch skips children already started. In a preview it first cuts `items` to the workflow's
+  `approval.previewItems` (default 3).
+- `currentRun()` (workflow scope or a step) returns this run as gtm knows it: `{ id, rootId, trigger, preview,
+  approved, workflow, previewItems }`. Size previews with it: process only the first few rows when `preview` is true.
+- `webhook({ verify, dedupe, onEvent })` builds an inbound webhook for `webhooks/index.ts` (docs: webhooks).
+- Company code never imports `start` from `workflow/api`: every start goes through the ledger.
 
 ## Preview, yes in chat, run
 
-Runs never pause for people, and the Console has no start or approve buttons. For a risky or costly run:
+Runs never pause for people, and the console has no start or approve buttons. For a risky or costly run:
 
-1. Run a preview: the same workflow with preview input (for example a row limit), whose return value carries
-   the sample rows and the measured cost. Read it through `npx @eliasstravik/gtm run` (below).
-2. Show the sample and the cost quote in the chat you are in (Claude Code, Codex or the Slack thread) and ask.
-3. Start the real run only after a yes in that chat.
+1. Preview: `npx gtm run <workflow> --input '<json>' --preview`. It needs no approval; its limits apply tree-wide
+   (`previewItems` children, `previewCalls` calls, `previewMaxUsd` dollars). It waits for the whole tree, then prints
+   the root's return value, each child's return value and the tree's total cost.
+2. Show the sample and the cost in this chat and ask Yes/No with the question tool, naming the workflow, the input
+   and the cost cap.
+3. Only after a yes: `npx gtm run <workflow> --input '<json>' --approve --max-usd <n> [--note "<what was approved>"]`.
+   It is accepted only when a completed preview of the same input exists from the last `previewWithinHours` (24).
 
-Cost quotes: a local preview on `claude`/`codex` measures plan usage, not money. Quote a hosted or scheduled
-run as the hosted model's AI Gateway price × the preview's token `usage`, or run a one-row hosted preview with
-`--prod`. A schedule's yes quotes cost per run × runs per month.
+Cost quotes: a local preview on `claude`/`codex` measures plan usage, not dollars ("plan usage, not metered"). Quote a
+hosted run as the hosted model's price × the preview's usage, or run a small preview with `--prod`. A schedule's yes
+quotes cost per run × runs per month.
 
 ## `gtm run`
 
 ```sh
-npx @eliasstravik/gtm run <workflow> [--input '<json>'] [--prod] [--no-wait]
+npx gtm run <workflow> [--input '<json>'] [--preview] [--approve --max-usd <n> [--note <text>]] [--prod] [--no-wait]
 ```
 
 - Default: `POST http://127.0.0.1:$GTM_PORT/api/gtm/start/<workflow>`, so `npm run dev` must be running.
-- `--prod`: the same on `GTM_PRODUCTION_URL` with the `x-vercel-protection-bypass` header set to
-  `GTM_BYPASS_SECRET`, both from `.env.local` (deploy.md).
-- It waits and prints the run's status, return value and error; `--no-wait` prints only the run id.
-- `--input` is one JSON value; single-quote it in the shell.
-- Start and runs answer only on `127.0.0.1`/`localhost` locally (never on a `GTM_ALLOWED_HOSTS` host) and
-  only with the bypass header when hosted, never to a browser.
+- `--prod`: the same on `GTM_PRODUCTION_URL` with the `x-vercel-protection-bypass` header set to `GTM_BYPASS_SECRET`
+  (docs: deploy).
+- It prints the run's status, return value, error and cost as JSON and exits non-zero unless it completed. A refusal
+  prints the ledger's reason (a 403).
+- Start and run status answer only on `127.0.0.1`/`localhost` locally, and only with the automation bypass hosted.
 
 ## Run size
 
-Keep each run under ~2,000 events (the Workflow SDK caps a run at 25,000 and replay slows past ~2,000): about
-20 rows per run when each row calls `agent()` with tools through AI Gateway (a measured one-row tool stage
-made ~120 events; a measured tool-less `agent()` row makes ~6), about 100 rows when rows are plain steps. Fan
-larger lists out into child runs of that size.
-
-## AI steps
-
-Every AI call in a workflow is `agent()` from `@eliasstravik/gtm/ai`: a one-shot extract, score or draft is
-`agent()` without `tools`; research that picks its own tool calls is `agent()` with them. It picks the backend
-(local.md), counts cost and keeps keys out of the run log. Never call `generateText`, `generateObject`,
-`streamText`, `WorkflowAgent`, `gateway()` or a provider directly, and never write a model id in workflow code:
-`GTM_MODEL` picks the model, and a stage's own `model` is only for a stage that truly needs another one. Custom
-tools take `tool` from `@eliasstravik/gtm/ai` too. `npx @eliasstravik/gtm check` flags `ai` and `@ai-sdk/*`
-imports and model ids under `workflows/`.
-
-```ts
-const { value } = await agent({
-  name: "draftEmail",
-  instructions: "Draft the first cold email to this person.",
-  skills: ["email-copywriting"], // .agents/skills/email-copywriting/SKILL.md (layout.md)
-  prompt: JSON.stringify(person),
-  schema: z.object({ subject: z.string(), body: z.string() }),
-});
-```
+Keep each run under ~2,000 events (the Workflow SDK caps a run at 25,000 and replay slows past ~2,000): about 20 rows
+per run when each row calls `agent()` with tools, about 100 when rows are plain steps. Fan larger lists out with
+`fanOut()` into child runs of that size.
 
 ## Scope rules
 
-- `db()` (`@eliasstravik/gtm/db`) only inside `"use step"` bodies. A workflow-scope reference to anything from
-  a module that reaches `db()` pulls `pg` into the workflow bundle and the build fails.
-- `agent()` (`@eliasstravik/gtm/ai`) only in workflow scope, never inside a `"use step"` body; it makes its own
-  steps. Options: `name`, `instructions`, `prompt`, `skills?` (folder names in `.agents/skills`; each
-  `SKILL.md` body joins the instructions, read in a step, so it works hosted too; an unknown name fails the
-  stage), `schema`, `model?`, `reasoning?`, `tools?` (`mcp`, `web`, `custom`), `maxSteps?` (default 20),
-  `maxUsd?` (a soft spend cap), `timeout?` (default `"10m"`; the stage fails when it is reached). When `maxSteps`
-  or `maxUsd` cuts the loop short, one last call without tools writes up the result. It returns `{ value,
-  costUsd, modelCalls, toolCalls, usage, stopReason }`, `stopReason` being `done`, `maxSteps` or `maxUsd`; on the
-  `claude`/`codex` CLI path `toolCalls` is always `[]` and `stopReason` `done` (the CLI runs its own tool loop).
-  Backends, models and what `maxUsd` counts on each: local.md.
+- `db()` (`#gtm/database`) only inside `"use step"` bodies and route handlers; in workflow code itself it throws.
+- `agent()` (`#gtm/ai`) only in workflow scope, never inside a `"use step"` body; it makes its own steps (docs: ai).
+- `action()` (`#gtm/ledger`) only inside a `"use step"` body (docs: ledger).
+- `fanOut()` in workflow scope; `currentRun()` anywhere in a run.

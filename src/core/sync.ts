@@ -244,6 +244,8 @@ function binding(p: GtmPlugin): string {
       `const rt = { plugin: ${JSON.stringify(p.name)}, step: none, once: none };`, "");
   }
   for (const name of rt.exports) lines.push(`export const ${name}: Api[${JSON.stringify(name)}] = (...args: any[]) => (bind(rt).${name} as (...a: any[]) => any)(...args);`);
+  // The runtime module's types too (Webhooks, AgentOptions, …), erased from every bundle.
+  lines.push(`export type * from ${JSON.stringify(from)};`);
   return `${lines.join("\n")}\n`;
 }
 

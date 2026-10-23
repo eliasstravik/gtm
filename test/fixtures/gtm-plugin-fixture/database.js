@@ -1,0 +1,8 @@
+// A DatabaseSlotV1 provider that wraps the default one and marks itself.
+import provide from "@eliasstravik/gtm/database/provide";
+
+export default function swapped(ctx) {
+  const inner = provide(ctx);
+  globalThis.__gtmSwappedDatabase = true;
+  return { ...inner, swapped: true };
+}
