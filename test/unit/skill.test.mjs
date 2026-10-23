@@ -14,6 +14,8 @@ test("frontmatter: name matches the folder; description third person, at most 1,
   const description = front.match(/^description: (.*)$/m)?.[1] ?? "";
   assert.ok(description.length > 0 && description.length <= 1024, `description is ${description.length} characters`);
   assert.doesNotMatch(description, /[<>]/);
+  // A plain YAML scalar: hosts with strict YAML parsers (Cursor) drop a skill whose description holds ": " or " #".
+  assert.doesNotMatch(description, /: | #|^["'&*!|>%@`{[]/);
   assert.match(description, /^Sets up/);
   assert.match(description, /Triggers when/);
   assert.match(description, /Not for/);

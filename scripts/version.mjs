@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * `npm run version:bump <x.y.z>`: one version across package.json and package-lock.json, the plugin manifests, the
- * starter's pin and the README's Deploy button tag. It edits files only; tagging and publishing stay manual.
+ * `npm run version:bump <x.y.z>`: one version across package.json and package-lock.json, the plugin manifests and
+ * marketplace entries, the starter's pin and the README's Deploy button tag. It edits files only; tagging and
+ * publishing stay manual.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -20,7 +21,9 @@ json("package.json", (p) => { p.version = next; });
 json("package-lock.json", (p) => { p.version = next; p.packages[""].version = next; });
 json("plugin.json", (p) => { p.version = next; });
 json(".claude-plugin/plugin.json", (p) => { p.version = next; });
+json(".cursor-plugin/plugin.json", (p) => { p.version = next; });
+json(".github/plugin/marketplace.json", (p) => { for (const entry of p.plugins) entry.version = next; });
 json("starter/package.json", (p) => { p.dependencies["@eliasstravik/gtm"] = next; });
 const readme = readFileSync("README.md", "utf8");
 writeFileSync("README.md", readme.replaceAll(`tree%2Fv${before}%2F`, `tree%2Fv${next}%2F`).replaceAll(`at \`v${before}\``, `at \`v${next}\``));
-console.log(`Version ${before} → ${next} in package.json, package-lock.json, plugin.json, .claude-plugin/plugin.json, starter/package.json and README.md.`);
+console.log(`Version ${before} → ${next} in package.json, package-lock.json, the plugin manifests, starter/package.json and README.md.`);
