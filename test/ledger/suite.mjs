@@ -203,6 +203,47 @@ export async function suite({ url, concurrent }) {
     assert.equal(rerun.ok, false, "a re-run with copied attributes is its own external, unapproved root");
   });
 
+  test("an unapproved run never borrows another run's open reservation, and a key is never re-run above its reservation", async () => {
+    const paid = wf({ approval: { required: true, previewMaxUsd: 1 } });
+    const p = await begin({ workflow: paid, input: {}, trigger: "cli", preview: true });
+    const held = await spend(p, 0.5, "vendor-stable-key");
+    assert.ok(held.ok && !held.repeat);
+    const outside = `wrun_${randomUUID()}`;
+    sdk.set(outside, { sdkRunId: outside, workflow: paid, status: "running", createdAt: new Date().toISOString(), completedAt: null, attributes: {} });
+    const fresh = await ledger.reserve({ sdkRunId: outside, plugin: "company", kind: "paid_api", idempotencyKey: randomUUID(), estimateUsd: 1 });
+    assert.equal(fresh.ok, false);
+    const borrowed = await ledger.reserve({ sdkRunId: outside, plugin: "company", kind: "paid_api", idempotencyKey: "vendor-stable-key", estimateUsd: 100 });
+    assert.equal(borrowed.ok, false, "the approval check comes before any same-key repeat");
+    const plainName = wf(), plain = await begin({ workflow: plainName, input: {}, trigger: "cli" });
+    const other = await begin({ workflow: plainName, input: 2, trigger: "cli" });
+    const mine = await spend(plain, 0.5, "shared-key");
+    assert.ok(mine.ok);
+    const theirs = await spend(other, 0.5, "shared-key");
+    assert.equal(theirs.ok, false);
+    assert.match(theirs.reason, /reserved by another run that has not finished/);
+    const bigger = await spend(plain, 5, "shared-key");
+    assert.equal(bigger.ok, false);
+    assert.match(bigger.reason, /above this key's open reservation/);
+    assert.equal((await spend(plain, 0.5, "shared-key")).repeat, "reserved", "the same run re-runs a crashed call at its reservation");
+  });
+
+  test("an unreadable registry refuses every spend and start instead of dropping approvals and budgets", async () => {
+    const paid = wf({ approval: { required: true } });
+    const run = await begin({ workflow: wf(), input: {}, trigger: "cli" });
+    const registry = workflows.registry;
+    workflows.registry = async () => { throw new Error("registry broke"); };
+    try {
+      const r = await spend(run, 0.1);
+      assert.equal(r.ok, false);
+      assert.match(r.reason, /the workflow registry could not be read \(registry broke\)/);
+      const a = await ledger.admit({ workflow: paid, input: {}, trigger: "cli" });
+      assert.equal(a.ok, false);
+      assert.match(a.reason, /registry could not be read/);
+    } finally {
+      workflows.registry = registry;
+    }
+  });
+
   test("a preview counts calls and spend tree-wide, and refuses one call above its cap", async () => {
     const name = wf({ approval: { required: true, previewCalls: 3, previewMaxUsd: 1 } });
     const p = await begin({ workflow: name, input: {}, trigger: "cli", preview: true });

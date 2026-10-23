@@ -46,12 +46,13 @@ export async function sdkRun(workflows: Registry, sdkId: string, values = false)
   return out;
 }
 
-/** Every SDK run created at or after `since` (ISO, or "-infinity"), newest first, at most 2,000. */
+/** Every SDK run created at or after `since` (ISO, or "-infinity"), newest first: it pages until it reaches `since`, so
+ * reconcile's cursor never skips a run however many wait. */
 export async function sdkRuns(workflows: Registry, since: string): Promise<SdkRun[]> {
   const world = await getWorld(), out: SdkRun[] = [], from = since === "-infinity" ? 0 : Date.parse(since);
   const { name } = ids(workflows);
   let cursor: string | undefined;
-  for (let page = 0; page < 20; page += 1) {
+  for (;;) {
     const res = (await world.runs.list({ pagination: { limit: 100, sortOrder: "desc", ...(cursor && { cursor }) }, resolveData: "none" } as never)) as
       { data: WorldRun[]; cursor: string | null; hasMore: boolean };
     for (const r of res.data) {

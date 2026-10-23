@@ -70,7 +70,11 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
   const workflows = () => (ctx.has("workflows") ? ctx.get("workflows") : undefined);
 
   const limitsFor = async (workflow: string): Promise<Limits> => {
-    const info = (await workflows()?.registry().catch(() => ({} as Record<string, never>)))?.[workflow] ?? {};
+    // Fail closed: when the registry cannot be read, approvals and budgets are unknown, so the caller refuses.
+    const registry = await workflows()?.registry().catch((error: Error) => {
+      throw new Error(`the workflow registry could not be read (${error?.message ?? error})`);
+    });
+    const info = registry?.[workflow] ?? {};
     const a = info.approval;
     return {
       approval: { required: a?.required === true, previewItems: a?.previewItems ?? 3, previewCalls: a?.previewCalls ?? 10, previewMaxUsd: a?.previewMaxUsd ?? 1, previewWithinHours: a?.previewWithinHours ?? 24 },
@@ -212,24 +216,31 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
             row = await one(sql`select id from gtm_ledger.runs where sdk_run_id = ${action.sdkRunId}`, tx);
           }
           const run = (await getRun(row!.id, tx))!, root = run.rootRunId === run.id ? run : (await getRun(run.rootRunId, tx))!;
-          // Same-key repeats: after `ok` nothing runs again; a row still reserved (a crash mid-call) is run again against
-          // its reservation; after `failed` (or `blocked`) a new attempt row `<key>#<n>` reserves and counts again.
-          let key = action.idempotencyKey;
-          const like = `${key.replace(/[\\%_]/g, "\\$&")}#%`;
-          const tries = await rows(sql`select id, outcome from gtm_ledger.actions where idempotency_key = ${key} or idempotency_key like ${like} order by id desc`, tx);
-          const last = tries[0];
-          if (last?.outcome === "ok") return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "ok" };
-          if (last?.outcome === "reserved" || last?.outcome === "unknown") return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "reserved" };
-          if (last) key = `${key}#${tries.length + 1}`;
           const est = action.estimateUsd;
           const block = async (reason: string): Promise<Reservation> => {
-            const b = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, outcome, detail, idempotency_key)
+            // A refusal keeps no idempotency key, so it never stands in for the key's real attempts.
+            const b = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, outcome, detail)
               values (${run.id}, ${root.id}, ${run.workflow}, ${action.plugin}, ${action.kind}, ${action.target ?? null}, ${JSON.stringify(action.keys ?? {})}::jsonb,
-                'blocked', ${redactJson(ctx, { ...action.detail, reason, estimateUsd: est })}::jsonb, ${key}) returning id`, tx);
+                'blocked', ${redactJson(ctx, { ...action.detail, reason, estimateUsd: est, idempotencyKey: action.idempotencyKey })}::jsonb) returning id`, tx);
             return { ok: false, reason, id: String(b.id) };
           };
           const [limits, rootLimits] = [await limitsFor(run.workflow), await limitsFor(root.workflow)];
           if ((limits.approval.required || rootLimits.approval.required) && root.approvedMaxUsd == null && !root.preview) return block(NEEDS_YES);
+          // Same-key repeats: after `ok` nothing runs again; a row this same run still holds reserved (a crash mid-call)
+          // runs again against its reservation, never above it; after `failed` a new attempt row `<key>#<n>` reserves and
+          // counts again. Another run's open reservation is never borrowed.
+          let key = action.idempotencyKey;
+          const like = `${key.replace(/[\\%_]/g, "\\$&")}#%`;
+          const tries = await rows(sql`select id, run_id, outcome, reserved_usd::float8 as reserved from gtm_ledger.actions
+            where idempotency_key = ${key} or idempotency_key like ${like} order by id desc`, tx);
+          const last = tries[0];
+          if (last?.outcome === "ok") return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "ok" };
+          if (last?.outcome === "reserved" || last?.outcome === "unknown") {
+            if (last.run_id !== run.id) return block(`The key ${key} is reserved by another run that has not finished; use a key of this run's own.`);
+            if (est != null && est > Number(last.reserved ?? 0)) return block(`The estimate ($${est}) is above this key's open reservation ($${Number(last.reserved ?? 0)}).`);
+            return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "reserved" };
+          }
+          if (last) key = `${key}#${tries.length + 1}`;
           const tree = await one(sql`select ${SPENT} as usd, count(*) filter (where outcome <> 'blocked') as calls from gtm_ledger.actions where root_run_id = ${root.id}`, tx);
           const treeUsd = Number(tree.usd);
           if (root.preview) {
