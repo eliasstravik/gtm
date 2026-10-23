@@ -3,6 +3,21 @@ import type { Ctx, Manifest, SlotMap } from "../core/types.js";
 const INSTANCES = Symbol.for("@eliasstravik/gtm/slot-instances");
 
 /**
+ * `load()`, again for up to 3 s after a ChunkLoadError under next dev: Turbopack keeps a chunk load that raced a rebuild
+ * failed until the next edit, so this clears its chunk cache (as Next's hot reloader does) and retries.
+ */
+export async function loadFresh<T>(load: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await load(); } catch (error) {
+      const clear = (globalThis as { __next__clear_chunk_cache__?: unknown }).__next__clear_chunk_cache__;
+      if ((error as Error)?.name !== "ChunkLoadError" || typeof clear !== "function" || attempt >= 10) throw error;
+      clear();
+      await new Promise((done) => setTimeout(done, 300));
+    }
+  }
+}
+
+/**
  * Plugin code's context inside steps and routes, built from the manifest and that plugin's slot map. One instance per
  * slot and manifest in a process, so every caller shares the same provider.
  */
@@ -29,7 +44,7 @@ export function context(manifest: Manifest, map: SlotMap): Ctx {
     module: async <T>(name: string) => {
       const load = map.modules[name];
       if (!load) throw new Error(`The ${map.plugin} plugin has no project module "${name}"`);
-      return (await load()) as T;
+      return (await loadFresh(load)) as T;
     },
   };
   return ctx;

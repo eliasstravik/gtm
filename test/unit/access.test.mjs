@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { gtmProxy } from "../../dist/core/proxy.js";
 import { gtmRoutes } from "../../dist/core/server.js";
 import { brand } from "../../dist/kit/brand.js";
+import { loadFresh } from "../../dist/kit/ctx.js";
 import { bySpecificity, find, match, sameShape } from "../../dist/kit/patterns.js";
 
 const AUTOMATION = "automation-secret-0123456789abcdef";
@@ -148,3 +149,17 @@ test("route shim: the access check again, an unbranded signature handler answers
   assert.equal(await (await call(GET, "shared")).text(), "ok", "GET runs the GET declaration");
   assert.equal(await (await call(POST, "shared", { method: "POST" })).text(), "post", "POST runs the POST declaration at the same path");
 }));
+
+test("loadFresh: a chunk load that raced a next dev rebuild clears Turbopack's chunk cache and retries; other errors throw", async () => {
+  const chunkError = () => Object.assign(new Error("Failed to load chunk"), { name: "ChunkLoadError" });
+  let tries = 0, cleared = 0;
+  const flaky = async () => { tries += 1; if (tries < 3) throw chunkError(); return "loaded"; };
+  await assert.rejects(loadFresh(flaky), { name: "ChunkLoadError" }, "outside next dev (no cache to clear) it throws at once");
+  globalThis.__next__clear_chunk_cache__ = () => { cleared += 1; };
+  try {
+    tries = 0;
+    assert.equal(await loadFresh(flaky), "loaded");
+    assert.deepEqual([tries, cleared], [3, 2]);
+    await assert.rejects(loadFresh(async () => { throw new Error("syntax"); }), /syntax/);
+  } finally { delete globalThis.__next__clear_chunk_cache__; }
+});

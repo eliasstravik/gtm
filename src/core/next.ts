@@ -20,6 +20,9 @@ export function withGtm(config: ConfigInput = {}, gtm: { manifest: Manifest; tra
     const base = basePath();
     if (base && !/^(\/[\w-]+)+$/.test(base)) throw new Error(`GTM_BASE_PATH must look like /acme, not ${base}`);
     if (base) cfg = { ...cfg, basePath: cfg.basePath ?? base };
+    // next dev's in-place server updates can leave the API route loading a project module's deleted chunk after an edit
+    // (webhooks/index.ts, workflows/index.ts) until the next one; reloading the route on each rebuild never does.
+    if (phase === "phase-development-server") cfg = { ...cfg, experimental: { turbopackServerFastRefresh: false, ...cfg.experimental } };
     cfg = { ...cfg, outputFileTracingIncludes: includes, allowedDevOrigins: [...new Set([...(cfg.allowedDevOrigins ?? []), ...allowedHosts()])] };
     for (const transform of gtm.transforms) {
       const next = transform(cfg);
