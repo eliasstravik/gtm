@@ -169,6 +169,10 @@ export async function suite({ url, concurrent }) {
     assert.equal((await spend(run, 0.2, key)).repeat, "ok", "after ok: done-before");
     const failed = (await q("select cost_usd, reserved_usd::float8 as r from gtm_ledger.actions where id = $1", [first.id]))[0];
     assert.deepEqual(failed, { cost_usd: null, r: 0.2 }, "a failed call with no known cost keeps its reservation counted");
+    const leaky = await spend(run, 0.01);
+    await ledger.settle(leaky.id, { outcome: "failed", detail: { error: `vendor said no to ${process.env.ACME_KEY}` } });
+    const detail = (await q("select detail from gtm_ledger.actions where id = $1", [leaky.id]))[0].detail;
+    assert.equal(detail.error, "vendor said no to [redacted]", "a declared connection's value never lands in the ledger");
     const unmetered = await ledger.reserve({ sdkRunId: run.sdkRunId, plugin: "ai", kind: "model_call", idempotencyKey: randomUUID(), estimateUsd: null });
     assert.ok(unmetered.ok);
     await ledger.settle(unmetered.id, { costUsd: null, outcome: "ok" });

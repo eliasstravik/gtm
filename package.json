@@ -123,8 +123,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && node scripts/assets.mjs && chmod +x dist/core/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && node --test test/unit/*.test.mjs",
-    "test": "node --test test/unit/*.test.mjs && node --test test/acceptance.test.mjs",
+    "check": "npm run build && node --test test/unit/*.test.mjs",
+    "test": "npm run check && node --test test/ledger/*.test.mjs && node --test test/acceptance.test.mjs",
     "check:names": "node scripts/check-names.mjs",
     "lines": "node scripts/lines.mjs",
     "version:bump": "node scripts/version.mjs"

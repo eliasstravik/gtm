@@ -41,23 +41,7 @@
 .spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Local, Preview or Production at the top of the sidebar: Geist's amber, grey and green badges; amber while a saved key goes live. */
-.environment-badge {
-  --badge: var(--ok);
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; max-width: 100%; min-height: 22px; padding: 3px 8px; border-radius: 11px;
-  font-size: 12px; font-weight: 500; line-height: 14px; color: var(--badge);
-  background: color-mix(in srgb, var(--badge) 10%, var(--bg)); border: 1px solid color-mix(in srgb, var(--badge) 22%, var(--bg));
-}
-.environment-badge::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.environment-badge[data-environment="local"], .environment-badge[data-state="updating"] { --badge: var(--amber); }
-.environment-badge[data-environment="preview"] { --badge: var(--muted); }
-.environment-badge[data-state="failed"] { --badge: var(--failed); }
-.environment-badge[data-state="updating"]::before { animation: badge-pulse 1.4s ease-in-out infinite; }
-.environment-badge .badge-more { font-weight: 400; color: color-mix(in srgb, var(--badge) 70%, var(--muted)); }
-.environment-badge a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-@keyframes badge-pulse { 50% { opacity: 0.25; } }
-
-@media (prefers-reduced-motion: reduce) { .environment-badge[data-state="updating"]::before, .spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 @media (max-width: 640px) {
   .connections-view .title-row > .button { align-self: flex-start; }
   .connection-actions { flex-wrap: wrap; }
@@ -66,5 +50,4 @@
   .connection-row > .connection-state { grid-row: 2; grid-column: 1; }
   .connection-row > .connection-buttons { grid-row: 1 / span 2; grid-column: 2; }
   .connection-fields input { font-size: 16px; }
-  .environment-badge .badge-more, .environment-badge .badge-name { display: none; }
 }

@@ -1,0 +1,9 @@
+/* Runs: one line per cell, so a narrow window scrolls the table sideways instead of wrapping every row. */
+.runs td { white-space: nowrap; }
+/* Details takes the width left over, at least 30ch, and a failure's message is cut to fit (the whole text is its tooltip). */
+.runs td:last-child { width: 100%; max-width: 0; min-width: 30ch; }
+.runs .run-error { max-width: 60ch; }
+.status-refused::before, .status-start_failed::before { background: #e5484d; }
+.status-admitted::before { background: #c88c14; }
+.status-cancelled::before, .status-unknown::before { background: var(--muted); }
+@media (max-width: 640px) { .runs .toolbar input[type="search"] { min-width: 160px; } }

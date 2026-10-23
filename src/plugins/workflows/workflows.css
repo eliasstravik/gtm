@@ -24,12 +24,6 @@
 .wf-link:hover { text-decoration: none; }
 .wf-row:hover .wf-link { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 .wf-meta { margin-left: auto; padding-left: 16px; font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* Runs: one line per cell, so a narrow window scrolls the table sideways instead of wrapping every row. */
-.runs td { white-space: nowrap; }
-/* Details takes the width left over, at least 30ch, and a failure's message is cut to fit (the whole text is its tooltip). */
-.runs td:last-child { width: 100%; max-width: 0; min-width: 30ch; }
-.runs .run-error { max-width: 60ch; }
-
 /* A workflow's page: the viewer's tabs, its diagram (a canvas that scrolls, boxes that open their explanation). */
 .tabs { display: flex; flex-shrink: 0; height: 42px; gap: 24px; padding: 0 24px; border-bottom: 1px solid var(--border); overflow-x: auto; }
 .tabs a { display: flex; align-items: center; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
@@ -61,7 +55,6 @@
 @media (prefers-reduced-motion: reduce) { .wf-dot-running::after { animation: none; } }
 @media (max-width: 640px) {
   .wf-controls input[type="search"] { width: auto; flex: 1; min-width: 0; }
-  .runs .toolbar input[type="search"] { min-width: 160px; }
   .wf-row { min-height: 48px; padding-block: 12px; }
   .wf-link { font-size: 15px; white-space: normal; overflow-wrap: anywhere; }
   .tabs, .diagram-summary { padding-inline: 12px; }

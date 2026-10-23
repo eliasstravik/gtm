@@ -56,6 +56,10 @@ function redact(ctx: Ctx, text: string): string {
   return s.length > 500 ? `${s.slice(0, 500)}…` : s;
 }
 
+/** `detail` as JSON with every string redacted (and cut to 500 characters). */
+const redactJson = (ctx: Ctx, detail: Record<string, unknown>) =>
+  JSON.stringify(detail, (_k, v: unknown) => (typeof v === "string" ? redact(ctx, v) : v));
+
 const SDK_STATUS: Record<SdkRun["status"], RunStatus> = { pending: "running", running: "running", completed: "completed", failed: "failed", cancelled: "cancelled" };
 
 export default function provide(ctx: Ctx): LedgerSlotV1 {
@@ -221,7 +225,7 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           const block = async (reason: string): Promise<Reservation> => {
             const b = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, outcome, detail, idempotency_key)
               values (${run.id}, ${root.id}, ${run.workflow}, ${action.plugin}, ${action.kind}, ${action.target ?? null}, ${JSON.stringify(action.keys ?? {})}::jsonb,
-                'blocked', ${JSON.stringify({ ...action.detail, reason, estimateUsd: est })}::jsonb, ${key}) returning id`, tx);
+                'blocked', ${redactJson(ctx, { ...action.detail, reason, estimateUsd: est })}::jsonb, ${key}) returning id`, tx);
             return { ok: false, reason, id: String(b.id) };
           };
           const [limits, rootLimits] = [await limitsFor(run.workflow), await limitsFor(root.workflow)];
@@ -244,7 +248,7 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           }
           const r = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, reserved_usd, outcome, detail, idempotency_key)
             values (${run.id}, ${root.id}, ${run.workflow}, ${action.plugin}, ${action.kind}, ${action.target ?? null}, ${JSON.stringify(action.keys ?? {})}::jsonb,
-              ${est}, 'reserved', ${JSON.stringify(action.detail ?? {})}::jsonb, ${key}) returning id`, tx);
+              ${est}, 'reserved', ${redactJson(ctx, action.detail ?? {})}::jsonb, ${key}) returning id`, tx);
           return { ok: true, id: String(r.id), runId: run.id, rootId: root.id };
         });
       } catch (error) {
@@ -256,7 +260,7 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
       try {
         const cost = actual.costUsd === undefined ? null : actual.costUsd;
         await db().execute(sql`update gtm_ledger.actions set cost_usd = coalesce(${cost}::numeric, cost_usd), outcome = ${actual.outcome ?? "ok"},
-          detail = detail || ${JSON.stringify(actual.detail ?? {})}::jsonb where id = ${Number(reservationId)} and outcome in ('reserved', 'unknown')`);
+          detail = detail || ${redactJson(ctx, actual.detail ?? {})}::jsonb where id = ${Number(reservationId)} and outcome in ('reserved', 'unknown')`);
       } catch (error) {
         console.error(`[gtm] ledger: could not settle action ${reservationId}; reconcile will (${(error as Error).message})`);
       }

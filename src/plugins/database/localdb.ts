@@ -144,7 +144,7 @@ async function serve(dir: string, dev: boolean): Promise<LocalDatabase> {
 
 /**
  * The queue PGLiteSocketHandler runs messages through. pglite-socket's own one interleaves extended-protocol
- * messages across connections (spike 1c), so a connection owns the database from its first extended-protocol
+ * messages across connections, so a connection owns the database from its first extended-protocol
  * message until Sync, and for as long as it is inside a transaction.
  */
 function queueFor(db: PGlite) {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { duration, Link, Search, Status, time, useApi, useQuery, type TabProps } from "@eliasstravik/gtm/ui";
+import "./runs.css";
 
 type Run = { id: string; sdkRunId: string | null; workflow: string; trigger: string; preview: boolean; status: string; reason: string | null;
   parentRunId: string | null; rootRunId: string; approvedMaxUsd: number | null; approvalNote: string | null; startedAt: string; finishedAt: string | null;

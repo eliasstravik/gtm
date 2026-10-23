@@ -158,3 +158,14 @@ td .muted { font-size: 13px; }
   th, td { padding: 10px 12px; }
   .pagination, .grid-footer, .grid-message { padding-inline: 12px; }
 }
+
+/* Local, Preview or Production at the top of the sidebar: Geist's amber, grey and green badges. */
+.environment-badge {
+  --badge: var(--ok);
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; max-width: 100%; min-height: 22px; padding: 3px 8px; border-radius: 11px;
+  font-size: 12px; font-weight: 500; line-height: 14px; color: var(--badge);
+  background: color-mix(in srgb, var(--badge) 10%, var(--bg)); border: 1px solid color-mix(in srgb, var(--badge) 22%, var(--bg));
+}
+.environment-badge::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.environment-badge[data-environment="local"] { --badge: var(--amber); }
+.environment-badge[data-environment="preview"] { --badge: var(--muted); }

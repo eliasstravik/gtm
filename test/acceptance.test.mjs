@@ -328,7 +328,14 @@ test("guards: cross-site starts, foreign hosts, cron without CRON_SECRET; GTM_AL
   refused(await get("/", { host: "evil.test" }), "a page on Host: evil.test");
   refused(await get("/api/gtm/cron/record"), "cron with CRON_SECRET unset");
   await stopDev();
-  await startDev(s.dir, { GTM_ALLOWED_HOSTS: BOX });
+  await startDev(s.dir, { GTM_ALLOWED_HOSTS: BOX, CRON_SECRET: "cron-test-secret" });
+  const pass = await get("/api/gtm/ledger/reconcile", { headers: { authorization: "Bearer cron-test-secret" } });
+  assert.equal(pass.status, 200, `the hourly reconcile route: ${pass.text}`);
+  assert.ok("ran" in pass.json());
+  refused(await get("/api/gtm/ledger/reconcile", { headers: { authorization: "Bearer wrong" } }), "reconcile with a wrong CRON_SECRET");
+  const tick = await get("/api/gtm/cron/record", { headers: { authorization: "Bearer cron-test-secret" } });
+  assert.equal(tick.status, 200, `a cron start of a plain workflow: ${tick.text}`);
+  refused(await get("/api/gtm/cron/score-list", { headers: { authorization: "Bearer cron-test-secret" } }), "a cron start of an approval-required workflow with no schedule approval");
   assert.equal((await get("/api/gtm/shell", { host: BOX })).status, 200);
   assert.equal((await get("/data", { host: BOX })).status, 200);
   refused(await get("/api/gtm/start/record", { method: "POST", body: {}, host: BOX }), "start on an allowed host");

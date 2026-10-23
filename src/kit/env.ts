@@ -1,5 +1,5 @@
 /**
- * Environment rules shared by every entry point (plan §3). Pure: no Node imports, so it is safe in the proxy,
+ * Environment rules shared by every entry point. Pure: no Node imports, so it is safe in the proxy,
  * in route handlers and in workflow scope.
  */
 export type Env = Record<string, string | undefined>;

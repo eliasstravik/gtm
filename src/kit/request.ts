@@ -25,7 +25,7 @@ export type Bypass = { header?: string; query: string[]; cookie: boolean };
 
 /**
  * The Protection Bypass a request carries, if any: the `x-vercel-protection-bypass` header or query parameter (any
- * case), or a bypass cookie. Per spike 1d that is a `_vercel_jwt` (the login session's name; its sub is "sso-protection")
+ * case), or a bypass cookie, a `_vercel_jwt` (the login session's name; its sub is "sso-protection")
  * with a `bypass` claim and sub "protection-bypass-automation" or, for Shareable Links, "protection-bypass-url".
  * A request asking for the cookie (`x-vercel-set-bypass-cookie`) counts as one too.
  */

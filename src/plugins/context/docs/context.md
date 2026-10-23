@@ -1,18 +1,18 @@
 # Context
 
-`context/` is what the company knows, as Markdown in any shape; the Console's Context view lists every `.md` file
+`context/` is what the company knows, as Markdown in any shape; the console's Context view lists every `.md` file
 under it, titled by its first heading. `init` writes only `context/company.md`. Everything else is added when a
 person asks for it, never on the agent's own initiative.
 
 Facts go in `context/` (what the company is, sells and targets). A procedure (how to write a cold email in the
-company's voice, how to research an account) is a skill instead: `.agents/skills/<name>/SKILL.md` (layout.md, where
-things go). `AGENTS.md` is neither; it holds the coding agents' instructions.
+company's voice, how to research an account) is a skill instead: `.agents/skills/<name>/SKILL.md` (docs: layout,
+where things go). `AGENTS.md` is neither; it holds the coding agents' instructions.
 
 ## The basics
 
-At setup `context/company.md` gets only the company's name as its first heading (the Console header shows it) and a
-short description: what the company sells, to whom and why they buy, from what the person said, or a quick look at
-the company's own site when they gave one. Then the agent asks what to add next (interaction.md).
+At setup `context/company.md` gets only the company's name as its first heading and a short description: what the
+company sells, to whom and why they buy, from what the person said, or a quick look at the company's own site when
+they gave one. The console shows the name from `company` in gtm.config.ts. Then the agent asks what to add next (docs: interaction).
 
 ## Suggested layout
 
@@ -118,4 +118,4 @@ A member file is an identity record, not criteria: `- Email:` (required), then `
 - When a new ICP or persona overlaps an existing one, offer to update that one first.
 - When a workflow reads a file being changed, say its next run uses the change and rows it already scored keep
   their scores until they are rescored. Deleting a file a workflow reads makes its runs fail until it reads another;
-  say so before deleting (interaction.md, rule 4).
+  say so before deleting (docs: interaction, rule 4).

@@ -19,5 +19,5 @@ Rules every recipe keeps:
 
 - Ask where the list comes from (a CSV, an existing table, a service) when the person has not said; never default to
   a vendor. A service the person names is called from a step written against its documentation, with its key added
-  to `.env.example` (connections.md).
+  to `.env.example` (docs: connections).
 - Building a workflow starts no paid run. Preview, then a yes in chat, then `--approve` (`npx gtm docs ledger`).

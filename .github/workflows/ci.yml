@@ -62,13 +62,13 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          git fetch --no-tags --depth=200 origin "+refs/heads/*:refs/remotes/origin/*" >/dev/null 2>&1 || true
+          if [ -z "$GTM_RIVAL_NAMES" ]; then echo "::warning::GTM_RIVAL_NAMES is not set as a repository secret, so check:names was skipped (release.yml requires it)."; exit 0; fi
           from=${BASE:-$BEFORE}
           if [ -z "$from" ] || ! git cat-file -e "$from" 2>/dev/null || [ "$from" = "0000000000000000000000000000000000000000" ]; then range="$HEAD"; else range="$from..$HEAD"; fi
           npm run check:names -- --tarball "$(ls /tmp/gtm-ci/*.tgz)" --messages "$range"
           npm run check:names
 
-      # §7: the checks run inside a network sandbox that allows only the npm registry. The runner itself must keep
+      # The checks run inside a network sandbox that allows only the npm registry. The runner itself must keep
       # talking to GitHub, so the tests run as a separate user whose outbound traffic is limited to loopback (the app,
       # PGlite, systemd-resolved's stub resolver), the configured DNS servers and HTTPS to registry.npmjs.org's
       # addresses. It is address-based: those are shared CDN addresses, so this catches calls to any other service
