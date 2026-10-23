@@ -158,6 +158,8 @@ export type ReserveRequest = {
   estimateUsd: number | null;
   keys?: { email?: string; domain?: string; linkedin?: string };
   detail?: Record<string, unknown>;
+  /** The step attempt asking: only a later attempt of the same step takes over a reservation left open under the key. */
+  holder?: { step: string; attempt: number };
 };
 export type Reservation = { ok: true; id: string; runId: string; rootId: string; repeat?: "ok" | "reserved" } | { ok: false; reason: string; id?: string };
 

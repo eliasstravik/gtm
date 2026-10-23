@@ -196,6 +196,7 @@ test("the ledger end to end: 403 without a yes, a preview of the tree with each 
   if (!s.dev) return t.skip("no dev server");
   write("workflows/score.ts", `import { z } from "zod";
 import { agent } from "#gtm/ai";
+import { action } from "#gtm/ledger";
 import { currentRun, fanOut } from "#gtm/workflows";
 
 /** Scores one company; a child of score-list. */
@@ -244,8 +245,23 @@ export async function echoB(x: string) {
   "use workflow";
   return { b: x };
 }
+
+/** Two action() calls with one key at once, in one step: only one may run. */
+async function twice() {
+  "use step";
+  let calls = 0;
+  const one = () => action({ kind: "paid_api", target: "test", idempotencyKey: "twin-key", estimateUsd: 0.6,
+    run: async () => { calls += 1; await new Promise((r) => setTimeout(r, 200)); return { value: calls, costUsd: 0.6 }; } });
+  const [a, b] = await Promise.all([one(), one()]);
+  return { statuses: [a.status, b.status].sort(), calls };
+}
+export async function twinActions() {
+  "use workflow";
+  return await twice();
+}
 `);
-  register(`import { chatty, echoA, echoB, needsYes, plainParent, scoreList, scoreOne, twoFans } from "./score";`, {
+  register(`import { chatty, echoA, echoB, needsYes, plainParent, scoreList, scoreOne, twinActions, twoFans } from "./score";`, {
+    "twin-actions": "{ run: twinActions, budget: { perRunUsd: 1, perMonthUsd: 5 } }",
     "two-fans": "twoFans",
     "echo-a": "echoA",
     "echo-b": "echoB",
@@ -271,6 +287,9 @@ export async function echoB(x: string) {
   assert.equal(preview.out.unmeteredCalls, 3, "the local CLI backend: plan usage, counted");
   assert.match(preview.stderr, /Preview total: \$0\.0000 plus 3 call\(s\) on your plan, not metered/);
 
+  const tiny = await gtmRun(["score-list", "--input", input, "--approve", "--max-usd", "0.005"]);
+  assert.notEqual(tiny.code, 0);
+  assert.match(tiny.output, /An approval is in whole cents, \$0\.01 or more, not \$0\.005/);
   const yes = await gtmRun(["score-list", "--input", JSON.stringify({ companies: ["acme.example", "globex.example", "initech.example"] }), "--approve", "--max-usd", "5", "--note", "Yes in chat"]);
   assertOk(yes, "the approved run");
   assert.equal(yes.out.returnValue.children, 3);
@@ -291,6 +310,11 @@ export async function echoB(x: string) {
   assert.notDeepEqual(fans.out.returnValue.a, fans.out.returnValue.b, "each fanOut started its own child");
   assert.deepEqual(fans.out.children.map((c) => [c.workflow, c.status, c.returnValue]).sort(),
     [["echo-a", "completed", { a: "first" }], ["echo-b", "completed", { b: "second" }]]);
+
+  const twins = await gtmRun(["twin-actions"]);
+  assertOk(twins, "two action() calls with one key");
+  assert.deepEqual(twins.out.returnValue, { statuses: ["done", "refused"], calls: 1 }, "one key runs once at a time");
+  assert.equal(twins.out.costUsd, 0.6);
 
   const parent = await gtmRun(["plain-parent"]);
   assert.equal(parent.out?.status, "failed");

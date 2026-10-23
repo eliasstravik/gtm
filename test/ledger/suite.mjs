@@ -54,7 +54,7 @@ export async function suite({ url, concurrent }) {
     sdk.get(run.sdkRunId).completedAt = new Date().toISOString();
     await ledger.refreshRun(run.runId);
   };
-  const spend = (run, usd, key = randomUUID()) => ledger.reserve({ sdkRunId: run.sdkRunId, plugin: "test", kind: "paid_api", idempotencyKey: key, estimateUsd: usd });
+  const spend = (run, usd, key = randomUUID(), holder) => ledger.reserve({ sdkRunId: run.sdkRunId, plugin: "test", kind: "paid_api", idempotencyKey: key, estimateUsd: usd, holder });
   const treeUsd = async (rootId) => Number((await q("select coalesce(sum(coalesce(cost_usd, reserved_usd)), 0)::float8 as usd from gtm_ledger.actions where root_run_id = $1", [rootId]))[0].usd);
 
   test("admit commits a row before start; start_failed voids it; a refused start is recorded with the 403 text", async () => {
@@ -82,6 +82,11 @@ export async function suite({ url, concurrent }) {
     await finish(preview);
     assert.equal((await ledger.admit({ workflow: name, input: same, trigger: "cli", approve: { maxUsd: 5 } })).ok, false, "a child still runs");
     await finish(kid);
+    for (const maxUsd of [0.005, 1.234, 0]) {
+      const odd = await ledger.admit({ workflow: name, input: same, trigger: "cli", approve: { maxUsd } });
+      assert.equal(odd.ok, false, `an approval of $${maxUsd} is never rounded`);
+      assert.match(odd.reason, /in whole cents, \$0\.01 or more/);
+    }
     const ok = await ledger.admit({ workflow: name, input: same, trigger: "cli", approve: { maxUsd: 5, note: "yes in chat" } });
     assert.ok(ok.ok && ok.approved, ok.reason);
     const row = (await q("select approved_max_usd::float8 as cap, approval_note, approved_by_preview from gtm_ledger.runs where id = $1", [ok.runId]))[0];
@@ -161,9 +166,15 @@ export async function suite({ url, concurrent }) {
     for (const attempt of [1, 2]) assert.ok((await spend(run, 0.1, `${run.sdkRunId}:step_1:${attempt}`)).ok);
     assert.equal(Number((await q("select count(*) from gtm_ledger.actions where run_id = $1", [run.runId]))[0].count), 2);
     const key = `enrich:${randomUUID()}`;
-    const first = await spend(run, 0.2, key);
+    const first = await spend(run, 0.2, key, { step: "step_a", attempt: 1 });
     assert.ok(first.ok && !first.repeat);
-    assert.equal((await spend(run, 0.2, key)).repeat, "reserved", "a crash mid-call: the same reservation runs again");
+    const twin = await spend(run, 0.2, key, { step: "step_a", attempt: 1 });
+    assert.equal(twin.ok, false, "the same attempt calling twice at once never runs twice on one reservation");
+    assert.match(twin.reason, /in use by another call that has not finished/);
+    assert.equal((await spend(run, 0.2, key, { step: "step_b", attempt: 1 })).ok, false, "another step never borrows it");
+    assert.equal((await spend(run, 0.2, key)).ok, false, "nor a call that names no step");
+    assert.equal((await spend(run, 0.2, key, { step: "step_a", attempt: 2 })).repeat, "reserved", "a crash mid-call: the step's retry runs again on it");
+    assert.equal((await spend(run, 0.2, key, { step: "step_a", attempt: 2 })).ok, false, "and holds it from then on");
     await ledger.settle(first.id, { outcome: "failed" });
     const retry = await spend(run, 0.2, key);
     assert.ok(retry.ok && !retry.repeat && retry.id !== first.id, "after failed: a new attempt row");
@@ -219,15 +230,15 @@ export async function suite({ url, concurrent }) {
     assert.equal(borrowed.ok, false, "the approval check comes before any same-key repeat");
     const plainName = wf(), plain = await begin({ workflow: plainName, input: {}, trigger: "cli" });
     const other = await begin({ workflow: plainName, input: 2, trigger: "cli" });
-    const mine = await spend(plain, 0.5, "shared-key");
+    const mine = await spend(plain, 0.5, "shared-key", { step: "s", attempt: 1 });
     assert.ok(mine.ok);
     const theirs = await spend(other, 0.5, "shared-key");
     assert.equal(theirs.ok, false);
     assert.match(theirs.reason, /reserved by another run that has not finished/);
-    const bigger = await spend(plain, 5, "shared-key");
+    const bigger = await spend(plain, 5, "shared-key", { step: "s", attempt: 2 });
     assert.equal(bigger.ok, false);
     assert.match(bigger.reason, /above this key's open reservation/);
-    assert.equal((await spend(plain, 0.5, "shared-key")).repeat, "reserved", "the same run re-runs a crashed call at its reservation");
+    assert.equal((await spend(plain, 0.5, "shared-key", { step: "s", attempt: 2 })).repeat, "reserved", "the same step's retry re-runs a crashed call at its reservation");
   });
 
   test("an unreadable registry refuses every spend and start instead of dropping approvals and budgets", async () => {

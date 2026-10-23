@@ -14,7 +14,8 @@ recorded approval:
    dollars (default 1). It waits for the whole tree and prints the root's value, each child's value and the total cost.
 2. **Ask**: show the sample and the cost in chat and ask Yes/No with the question tool, naming the workflow, the input
    and the cost cap.
-3. **Run**: after a yes, `npx gtm run <workflow> --input … --approve --max-usd <n> [--note …] [--prod]`. Accepted only
+3. **Run**: after a yes, `npx gtm run <workflow> --input … --approve --max-usd <n> [--note …] [--prod]` (`<n>` in whole
+   cents, $0.01 or more). Accepted only
    when a completed preview of the same input (its root completed, no child still going) exists from the last
    `previewWithinHours` (default 24). The approval records the cap, the note and the preview it rests on.
 4. **Schedules**: quote cost per run × runs per month, ask, then commit `schedule: { approvedUntil: "2026-12-31",
@@ -68,8 +69,10 @@ async function enrich(domain: string) {
 
 - Inside a `"use step"` body only. `done-before`: the same key already succeeded; re-read your own tables.
 - A throwing `run` is recorded as failed (its reservation stays counted) and rethrown, so the step's retry tries
-  again with a new attempt row. A row still reserved (a crash mid-call) runs again against its reservation and the
-  vendor may charge twice: pass `idempotencyKey` on to vendors that accept one.
+  again with a new attempt row. A row still reserved after a crash mid-call runs again against its reservation on the
+  step's retry, and the vendor may charge twice: pass `idempotencyKey` on to vendors that accept one.
+- One key, one call at a time: a second call with a key that is still reserved (in parallel, or from another step) is
+  `refused`. Give each item its own key, e.g. `enrich:${domain}`.
 - `costUsd` defaults to `estimateUsd` when the vendor reports nothing.
 
 ## Failure modes and freshness

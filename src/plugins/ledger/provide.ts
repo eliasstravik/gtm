@@ -5,7 +5,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
-import type { Admission, Ctx, LedgerRun, LedgerSlotV1, Limits, Reservation, RunStatus, SdkRun } from "@eliasstravik/gtm";
+import type { Admission, Ctx, LedgerRun, LedgerSlotV1, Limits, Reservation, ReserveRequest, RunStatus, SdkRun } from "@eliasstravik/gtm";
 
 /** The 403 every refused start of an approval-required workflow opens with. */
 export const NEEDS_YES = "This workflow needs a person's yes. Run a preview, show the person the sample and the cost, and ask Yes/No in chat. " +
@@ -122,6 +122,8 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           let preview = request.preview === true, approved: number | null = null, note: string | null = null, byPreview: string | null = null;
           let parent: LedgerRun | null = null, root: LedgerRun | null = null;
           const base = { id, workflow, trigger: request.parent ? "child" : request.trigger, preview, hash };
+          const cap = request.approve?.maxUsd;
+          if (cap !== undefined && !(cap >= 0.01 && Math.round(cap * 100) / 100 === cap)) return refuse(tx, base, `An approval is in whole cents, $0.01 or more, not $${cap}.`);
           if (request.parent) {
             parent = await getRun(request.parent.runId, tx);
             if (!parent) return refuse(tx, base, `fanOut: the parent run ${request.parent.runId} is not in the ledger.`);
@@ -227,18 +229,21 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           };
           const [limits, rootLimits] = [await limitsFor(run.workflow), await limitsFor(root.workflow)];
           if ((limits.approval.required || rootLimits.approval.required) && root.approvedMaxUsd == null && !root.preview) return block(NEEDS_YES);
-          // Same-key repeats: after `ok` nothing runs again; a row this same run still holds reserved (a crash mid-call)
-          // runs again against its reservation, never above it; after `failed` a new attempt row `<key>#<n>` reserves and
-          // counts again. Another run's open reservation is never borrowed.
+          // Same-key repeats: after `ok` nothing runs again; a reservation left open by an earlier attempt of the same step
+          // (a crash mid-call) runs again against it, never above it; after `failed` a new attempt row `<key>#<n>` reserves
+          // and counts again. Any other call (another run, another step, or the same attempt at once) never borrows it.
           let key = action.idempotencyKey;
           const like = `${key.replace(/[\\%_]/g, "\\$&")}#%`;
-          const tries = await rows(sql`select id, run_id, outcome, reserved_usd::float8 as reserved from gtm_ledger.actions
+          const tries = await rows(sql`select id, run_id, outcome, reserved_usd::float8 as reserved, detail->'holder' as holder from gtm_ledger.actions
             where idempotency_key = ${key} or idempotency_key like ${like} order by id desc`, tx);
           const last = tries[0];
           if (last?.outcome === "ok") return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "ok" };
           if (last?.outcome === "reserved" || last?.outcome === "unknown") {
             if (last.run_id !== run.id) return block(`The key ${key} is reserved by another run that has not finished; use a key of this run's own.`);
+            const held = last.holder as ReserveRequest["holder"] | null, by = action.holder;
+            if (!held || !by || held.step !== by.step || !(by.attempt > held.attempt)) return block(`The key ${key} is in use by another call that has not finished; give each call its own key.`);
             if (est != null && est > Number(last.reserved ?? 0)) return block(`The estimate ($${est}) is above this key's open reservation ($${Number(last.reserved ?? 0)}).`);
+            await tx.execute(sql`update gtm_ledger.actions set detail = detail || ${JSON.stringify({ holder: by })}::jsonb where id = ${last.id}`);
             return { ok: true, id: String(last.id), runId: run.id, rootId: root.id, repeat: "reserved" };
           }
           if (last) key = `${key}#${tries.length + 1}`;
@@ -260,7 +265,7 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           }
           const r = await one(sql`insert into gtm_ledger.actions (run_id, root_run_id, workflow, plugin, kind, target, keys, reserved_usd, outcome, detail, idempotency_key)
             values (${run.id}, ${root.id}, ${run.workflow}, ${action.plugin}, ${action.kind}, ${action.target ?? null}, ${JSON.stringify(action.keys ?? {})}::jsonb,
-              ${est}, 'reserved', ${redactJson(ctx, action.detail ?? {})}::jsonb, ${key}) returning id`, tx);
+              ${est}, 'reserved', ${redactJson(ctx, { ...action.detail, ...(action.holder && { holder: action.holder }) })}::jsonb, ${key}) returning id`, tx);
           return { ok: true, id: String(r.id), runId: run.id, rootId: root.id };
         });
       } catch (error) {
