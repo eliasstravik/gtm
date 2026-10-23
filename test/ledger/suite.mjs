@@ -110,6 +110,22 @@ export async function suite({ url, concurrent }) {
     assert.equal(Number((await q("select count(*) from gtm_ledger.runs where root_run_id = $1 and status <> 'refused'", [root.runId]))[0].count), 3);
   });
 
+  test("a child whose start failed starts again on retry; costs that are not $0 or more never lower spend", async () => {
+    const root = await begin({ workflow: wf(), input: {}, trigger: "cli" }), child = wf(), key = `${root.runId}:0`;
+    const first = await ledger.admit({ workflow: child, input: 0, trigger: "child", parent: { runId: root.runId, childKey: key } });
+    await ledger.startFailed(first.runId, new Error("transient"));
+    const retry = await ledger.admit({ workflow: child, input: 0, trigger: "child", parent: { runId: root.runId, childKey: key } });
+    assert.ok(retry.ok && !retry.existing && retry.runId === first.runId, "the retry starts the same child");
+    assert.equal((await ledger.getRun(first.runId)).status, "admitted");
+    for (const bad of [-100, NaN, Infinity]) {
+      const run = await begin({ workflow: wf(), input: {}, trigger: "cli" });
+      const r = await spend(run, 20);
+      await ledger.settle(r.id, { costUsd: bad, outcome: "ok" });
+      assert.equal(await treeUsd(run.runId), 20, `${bad}: the reservation stays what the call spent`);
+      assert.equal((await spend(run, 10)).ok, false, `${bad}: the run's $25 cap still holds`);
+    }
+  });
+
   test("schedules: cron starts are refused before and accepted after approvedUntil; webhooks never start approval-required work", async () => {
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), later = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
     const old = wf({ approval: { required: true }, budget: { perRunUsd: 3, perMonthUsd: 30 }, schedule: { approvedUntil: yesterday, note: "weekly" } });

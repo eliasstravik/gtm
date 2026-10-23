@@ -127,8 +127,14 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           if (request.parent) {
             parent = await getRun(request.parent.runId, tx);
             if (!parent) return refuse(tx, base, `fanOut: the parent run ${request.parent.runId} is not in the ledger.`);
-            const existing = await one(sql`select id, sdk_run_id, workflow, input_hash from gtm_ledger.runs where child_key = ${request.parent.childKey}`, tx);
+            const existing = await one(sql`select id, sdk_run_id, workflow, input_hash, status from gtm_ledger.runs where child_key = ${request.parent.childKey}`, tx);
             if (existing && (existing.workflow !== workflow || existing.input_hash !== hash)) return refuse(tx, base, `fanOut: the child key ${request.parent.childKey} already started another child.`);
+            if (existing?.status === "start_failed" && existing.sdk_run_id == null) {
+              // Its start failed: a retry starts the same child again.
+              await tx.execute(sql`update gtm_ledger.runs set status = 'admitted', reason = null, finished_at = null, started_at = now() where id = ${existing.id}`);
+              const top = parent.rootRunId === parent.id ? parent : await getRun(parent.rootRunId, tx);
+              return { ok: true, runId: existing.id, rootId: parent.rootRunId, preview: parent.preview, approved: top?.approvedMaxUsd != null };
+            }
             if (existing) return { ok: true, runId: existing.id, rootId: parent.rootRunId, preview: parent.preview, approved: false, existing: existing.sdk_run_id ?? existing.id };
             root = parent.rootRunId === parent.id ? parent : await getRun(parent.rootRunId, tx);
             preview = Boolean(root?.preview);
@@ -272,9 +278,11 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
 
     async settle(reservationId, actual) {
       try {
-        const cost = actual.costUsd === undefined ? null : actual.costUsd;
+        // A cost that is not a number of $0 or more is never recorded: the call's reservation stays what it spent.
+        const c = actual.costUsd, cost = typeof c === "number" && Number.isFinite(c) && c >= 0 ? c : null;
+        const detail = { ...actual.detail, ...(c != null && cost === null && { invalidCostUsd: String(c) }) };
         await db().execute(sql`update gtm_ledger.actions set cost_usd = coalesce(${cost}::numeric, cost_usd), outcome = ${actual.outcome ?? "ok"},
-          detail = detail || ${redactJson(ctx, actual.detail ?? {})}::jsonb where id = ${Number(reservationId)} and outcome in ('reserved', 'unknown')`);
+          detail = detail || ${redactJson(ctx, detail)}::jsonb where id = ${Number(reservationId)} and outcome in ('reserved', 'unknown')`);
       } catch (error) {
         console.error(`[gtm] ledger: could not settle action ${reservationId}; reconcile will (${(error as Error).message})`);
       }

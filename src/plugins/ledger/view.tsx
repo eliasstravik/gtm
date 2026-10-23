@@ -6,7 +6,7 @@ import "./runs.css";
 type Run = { id: string; sdkRunId: string | null; workflow: string; trigger: string; preview: boolean; status: string; reason: string | null;
   parentRunId: string | null; rootRunId: string; approvedMaxUsd: number | null; approvalNote: string | null; startedAt: string; finishedAt: string | null;
   costUsd: number; calls: number; unmetered: number };
-type Runs = { data: Run[]; hasMore: boolean; local: boolean; environment: string };
+type Runs = { data: Run[]; hasMore: boolean; next: string | null; local: boolean; environment: string };
 
 const active = (run: { status: string }) => run.status === "admitted" || run.status === "running";
 const STATUSES = ["running", "completed", "failed", "refused", "start_failed", "cancelled", "unknown"];
@@ -113,7 +113,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
         </div>
         <nav className="pagination" aria-label="Run pages">
           {p.has("before") && <Link href={href({ before: undefined })}>Newest</Link>}
-          {d.hasMore && <Link href={href({ before: d.data.at(-1)!.startedAt })}>Older runs</Link>}
+          {d.next && <Link href={href({ before: d.next })}>Older runs</Link>}
         </nav>
       </>}
     </section>

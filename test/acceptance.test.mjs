@@ -192,6 +192,22 @@ export async function record(input: { name: string }) {
   assert.deepEqual([missing.state, missing.usedBy.workflows], ["missing", ["record"]]);
 });
 
+test("Runs pages: rows that share one start time are each on some page", { timeout: 10 * MIN }, async (t) => {
+  if (!s.dir) return t.skip("no project");
+  if (!s.dev) await startDev();
+  await sql(s.dir, s.dbUrl, `insert into gtm_ledger.runs (id, workflow, trigger, root_run_id, status, started_at)
+    select g.id, 'pager', 'cli', g.id, 'completed', '2020-01-01T00:00:00.123456Z' from (select gen_random_uuid() as id from generate_series(1, 55)) g`);
+  const seen = new Set();
+  let page = await json("/api/gtm/ledger/runs?workflow=pager"), pages = 1;
+  for (const r of page.data) seen.add(r.id);
+  while (page.next && pages < 5) {
+    page = await json(`/api/gtm/ledger/runs?workflow=pager&before=${encodeURIComponent(page.next)}`);
+    for (const r of page.data) seen.add(r.id);
+    pages += 1;
+  }
+  assert.deepEqual([seen.size, pages, page.hasMore], [55, 2, false]);
+});
+
 test("the ledger end to end: 403 without a yes, a preview of the tree with each child's value, --approve on it, limits, refusals", { timeout: 30 * MIN }, async (t) => {
   if (!s.dev) return t.skip("no dev server");
   write("workflows/score.ts", `import { z } from "zod";
