@@ -18,7 +18,8 @@ export function gtmRoutes(manifest: Manifest, handlers: Handlers): { GET: NextHa
     try {
       const path = decodePath(((await next.params).path ?? []).join("/"));
       const method = req.method === "HEAD" ? "GET" : req.method;
-      const hit = path && find(manifest.routes, path);
+      // The route for this method; a path with routes for other methods only answers 405.
+      const hit = path && (find(manifest.routes, path, (r) => (r.methods as string[]).includes(method)) ?? find(manifest.routes, path));
       if (!path || !hit) throw new HttpError(404, `No such endpoint: /api/gtm/${(path ?? []).join("/")}`);
       if (!(hit.item.methods as string[]).includes(method)) throw new HttpError(405, `${req.method} is not allowed here.`);
       const verdict = routeAccess(hit.item.access, req, secretName(hit.item.secret, hit.params));

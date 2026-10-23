@@ -230,8 +230,25 @@ export async function needsYes() {
   "use workflow";
   return await agent({ name: "x", instructions: "x", prompt: "x" });
 }
+
+/** Two fanOut calls in one run: each starts its own children. */
+export async function twoFans() {
+  "use workflow";
+  return { a: await fanOut(["first"], "echo-a"), b: await fanOut(["second"], "echo-b") };
+}
+export async function echoA(x: string) {
+  "use workflow";
+  return { a: x };
+}
+export async function echoB(x: string) {
+  "use workflow";
+  return { b: x };
+}
 `);
-  register(`import { chatty, needsYes, plainParent, scoreList, scoreOne } from "./score";`, {
+  register(`import { chatty, echoA, echoB, needsYes, plainParent, scoreList, scoreOne, twoFans } from "./score";`, {
+    "two-fans": "twoFans",
+    "echo-a": "echoA",
+    "echo-b": "echoB",
     "score-list": "{ run: scoreList, approval: { required: true, previewItems: 2 } }",
     "score-one": "scoreOne",
     chatty: "{ run: chatty, approval: { required: true, previewCalls: 2 } }",
@@ -268,6 +285,12 @@ export async function needsYes() {
   assert.match(limit.out.error, /A preview makes at most 2 metered or plan calls\. Size previews with currentRun\(\)\.preview\./);
   const blocked = await sql(s.dir, s.dbUrl, "select count(*)::int as n from gtm_ledger.actions where outcome = 'blocked' and run_id = $1", [limit.out.runId]);
   assert.equal(blocked[0].n, 1, "the refused call is a blocked row");
+
+  const fans = await gtmRun(["two-fans", "--preview"]);
+  assertOk(fans, "two fanOut calls");
+  assert.notDeepEqual(fans.out.returnValue.a, fans.out.returnValue.b, "each fanOut started its own child");
+  assert.deepEqual(fans.out.children.map((c) => [c.workflow, c.status, c.returnValue]).sort(),
+    [["echo-a", "completed", { a: "first" }], ["echo-b", "completed", { b: "second" }]]);
 
   const parent = await gtmRun(["plain-parent"]);
   assert.equal(parent.out?.status, "failed");

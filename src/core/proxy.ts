@@ -68,9 +68,9 @@ export function gtmProxy(manifest: Manifest) {
     }
     if (path === "/api" || path.startsWith("/api/")) {
       const parts = path.startsWith("/api/gtm/") ? decodePath(path.slice("/api/gtm/".length)) : null;
-      const hit = parts && find(manifest.routes, parts);
-      if (!hit) return refuse(`No such endpoint: ${path}`, 404);
       const method = req.method === "HEAD" ? "GET" : req.method;
+      const hit = parts && (find(manifest.routes, parts, (r) => (r.methods as string[]).includes(method)) ?? find(manifest.routes, parts));
+      if (!hit) return refuse(`No such endpoint: ${path}`, 404);
       if (!(hit.item.methods as string[]).includes(method)) return refuse(`${req.method} is not allowed here.`, 405);
       const verdict = routeAccess(hit.item.access, req, secretName(hit.item.secret, hit.params));
       if (!verdict.ok) return refuse(verdict.error, verdict.status);

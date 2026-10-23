@@ -95,6 +95,9 @@ export async function suite({ url, concurrent }) {
     const c0 = await begin({ workflow: child, input: 0, trigger: "child", parent: { runId: root.runId, childKey: `${root.runId}:0` } });
     const again = await ledger.admit({ workflow: child, input: 0, trigger: "child", parent: { runId: root.runId, childKey: `${root.runId}:0` } });
     assert.equal(again.existing, c0.sdkRunId, "the child already started");
+    const other = await ledger.admit({ workflow: wf(), input: 9, trigger: "child", parent: { runId: root.runId, childKey: `${root.runId}:0` } });
+    assert.equal(other.ok, false, "a key that started another child never hands that child out");
+    assert.match(other.reason, /already started another child/);
     await begin({ workflow: child, input: 1, trigger: "child", parent: { runId: root.runId, childKey: `${root.runId}:1` } });
     const third = await ledger.admit({ workflow: child, input: 2, trigger: "child", parent: { runId: root.runId, childKey: `${root.runId}:2` } });
     assert.equal(third.ok, false);
@@ -286,6 +289,22 @@ export async function suite({ url, concurrent }) {
     assert.notEqual((await q("select value from gtm_ledger.meta where key = 'reconcile_cursor'"))[0].value, "-infinity", "the cursor moved");
     await q("update gtm_ledger.meta set value = '-infinity' where key = 'reconcile_at'");
     assert.equal((await ledger.reconcile()).external, 0, "a second pass inserts nothing twice");
+  });
+
+  test("reconcile: refresh takes running rows in turn, so 50 older open runs never hide a newer finished one", async () => {
+    await q("update gtm_ledger.runs set status = 'completed' where status = 'running'");
+    const name = wf();
+    for (let i = 0; i < 50; i += 1) await begin({ workflow: name, input: { old: i }, trigger: "cli" });
+    await q("update gtm_ledger.runs set started_at = now() - interval '1 hour' where workflow = $1", [name]);
+    const newer = await begin({ workflow: name, input: { newer: true }, trigger: "cli" });
+    sdk.get(newer.sdkRunId).status = "completed";
+    const status = async () => (await q("select status from gtm_ledger.runs where id = $1", [newer.runId]))[0].status;
+    for (let pass = 0; pass < 2 && (await status()) === "running"; pass += 1) {
+      await q("update gtm_ledger.meta set value = '-infinity' where key = 'reconcile_at'");
+      assert.equal((await ledger.reconcile()).refreshed, 50);
+    }
+    assert.equal(await status(), "completed", "refreshed within two passes");
+    await q("update gtm_ledger.runs set status = 'completed' where status = 'running'");
   });
 
   test("the views: run_costs per run and per tree, spend_by_workflow_month", async () => {

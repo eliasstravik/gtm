@@ -20,7 +20,7 @@ const manifest = {
   routes: [
     route("shell", ["GET"], "session"), route("runs/:id", ["GET"], "automation"), route("runs/export", ["GET"], "session"),
     route("start/:name", ["POST"], "automation"), route("cron/:name", ["GET"], "cron"), route("inspector/*", ["GET", "POST"], "local"),
-    route("hooks/:name", ["POST"], "signature", { secret: "GTM_HOOK_{name}_BYPASS" }), route("unbranded/:name", ["POST"], "signature", { secret: "X_{name}" }),
+    route("hooks/:name", ["POST"], "signature", { secret: "GTM_HOOK_{name}_BYPASS" }), route("shared", ["GET"], "session"), route("shared", ["POST"], "automation", { key: "q:shared" }), route("unbranded/:name", ["POST"], "signature", { secret: "X_{name}" }),
   ],
 };
 
@@ -68,6 +68,9 @@ test("local: loopback and allowed hosts read; cross-site POSTs, unknown hosts an
   assert.equal(await status(req("/api/gtm/inspector/run/x", { headers: { "x-forwarded-host": "box.tail1234.ts.net" } })), 403);
   assert.equal(await status(req("/api/gtm/cron/x")), 401, "cron needs CRON_SECRET, refused when unset");
   assert.equal(await status(req("/.well-known/workflow/v1/flow", { host: "box.tail1234.ts.net" })), 404);
+  assert.equal(await status(req("/api/gtm/shared")), 200, "GET reaches the GET declaration");
+  assert.equal(await status(req("/api/gtm/shared", { method: "POST" })), 200, "POST reaches the POST declaration at the same path");
+  assert.equal(await status(req("/api/gtm/shared", { method: "POST", host: "box.tail1234.ts.net" })), 403, "with that route's own access mode");
 }));
 
 test("a base path: routes and pages are matched below it", () => withEnv({ GTM_BASE_PATH: "/acme" }, async () => {
@@ -129,4 +132,7 @@ test("route shim: the access check again, an unbranded signature handler answers
   assert.equal((await call(GET, "shell")).headers.get("cache-control"), "no-store");
   assert.equal((await call(POST, "start/x", { method: "POST", headers: { origin: "http://evil.test" } })).status, 403);
   assert.equal((await call(GET, "nothing")).status, 404);
+  handlers["q:shared"] = { load: async () => ({ default: () => new Response("post") }), map: async () => map };
+  assert.equal(await (await call(GET, "shared")).text(), "ok", "GET runs the GET declaration");
+  assert.equal(await (await call(POST, "shared", { method: "POST" })).text(), "post", "POST runs the POST declaration at the same path");
 }));

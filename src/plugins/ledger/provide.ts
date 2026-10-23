@@ -125,7 +125,8 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
           if (request.parent) {
             parent = await getRun(request.parent.runId, tx);
             if (!parent) return refuse(tx, base, `fanOut: the parent run ${request.parent.runId} is not in the ledger.`);
-            const existing = await one(sql`select id, sdk_run_id from gtm_ledger.runs where child_key = ${request.parent.childKey}`, tx);
+            const existing = await one(sql`select id, sdk_run_id, workflow, input_hash from gtm_ledger.runs where child_key = ${request.parent.childKey}`, tx);
+            if (existing && (existing.workflow !== workflow || existing.input_hash !== hash)) return refuse(tx, base, `fanOut: the child key ${request.parent.childKey} already started another child.`);
             if (existing) return { ok: true, runId: existing.id, rootId: parent.rootRunId, preview: parent.preview, approved: false, existing: existing.sdk_run_id ?? existing.id };
             root = parent.rootRunId === parent.id ? parent : await getRun(parent.rootRunId, tx);
             preview = Boolean(root?.preview);
@@ -302,11 +303,17 @@ export default function provide(ctx: Ctx): LedgerSlotV1 {
         }
         const newest = runs.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), cursor === "-infinity" ? "" : cursor);
         if (newest) await db().execute(sql`update gtm_ledger.meta set value = ${newest} where key = 'reconcile_cursor'`);
-        // 2. Statuses of up to 50 running rows, oldest first.
-        for (const r of await rows(sql`select id from gtm_ledger.runs where status = 'running' and sdk_run_id is not null order by started_at limit 50`)) {
+        // 2. Statuses of up to 50 running rows, in turn: each pass goes on from where the last one stopped (by id, wrapping).
+        const after = (await one(sql`select value from gtm_ledger.meta where key = 'refresh_cursor'`))?.value ?? "";
+        const open = sql`select id from gtm_ledger.runs where status = 'running' and sdk_run_id is not null`;
+        let turn = await rows(sql`${open} and id::text > ${after} order by id limit 50`);
+        if (turn.length < 50) turn = [...turn, ...(await rows(sql`${open} and id::text <= ${after} order by id limit ${50 - turn.length}`))];
+        for (const r of turn) {
           await slot.refreshRun(r.id);
           refreshed += 1;
         }
+        if (turn.length) await db().execute(sql`insert into gtm_ledger.meta values ('refresh_cursor', ${String(turn.at(-1)!.id)})
+          on conflict (key) do update set value = excluded.value`);
       }
       // 3. Admitted rows that never got an SDK run.
       const timedOut = (await rows(sql`update gtm_ledger.runs set status = 'start_failed', reason = 'The run never started (no SDK run after 10 minutes).', finished_at = now()
