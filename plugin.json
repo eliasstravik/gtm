@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "gtm",
-  "version": "0.0.5",
+  "version": "0.0.5-rc.1",
   "description": "The open-source agent plugin that runs your GTM: your agent builds the workflows, gtm runs them on Vercel with a record of every run and dollar, and a console for your team.",
   "repository": "https://github.com/eliasstravik/gtm",
   "license": "MIT"
