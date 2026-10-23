@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/workflow": "2.0.75",
-    "@eliasstravik/gtm": "^0.0.5-rc.1",
+    "@eliasstravik/gtm": "^0.0.5",
     "ai": "7.0.143",
     "drizzle-orm": "0.45.4",
     "next": "16.4.2",
