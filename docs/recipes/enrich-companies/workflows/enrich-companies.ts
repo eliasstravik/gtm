@@ -1,5 +1,6 @@
-import { agent } from "@eliasstravik/gtm/ai";
-import { db } from "@eliasstravik/gtm/db";
+import { agent } from "#gtm/ai";
+import { db } from "#gtm/database";
+import { currentRun } from "#gtm/workflows";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { companies, companyProfiles } from "../db/schema";
@@ -29,12 +30,14 @@ async function saveProfile(domain: string, profile: Profile, costUsd: number) {
 }
 
 /**
- * Reads each saved company's website into a short profile. `limit` caps the companies per run (keep it near 20:
- * workflows.md, run size); a preview is `{ "limit": 1 }` or `{ "limit": 3 }`, whose result carries the sample and cost.
+ * Reads each saved company's website into a short profile. `limit` caps the companies per run (keep it near 20; docs:
+ * workflows, run size). A preview (`gtm run enrich-companies --preview`) reads one company, so its result carries a
+ * sample and its cost.
  */
 export async function enrichCompanies(input?: { limit?: number; freshDays?: number }) {
   "use workflow";
-  const domains = await pickDomains(Math.min(input?.limit ?? 20, 20), input?.freshDays ?? 30);
+  const { preview } = await currentRun();
+  const domains = await pickDomains(preview ? 1 : Math.min(input?.limit ?? 20, 20), input?.freshDays ?? 30);
   const sample: (Profile & { domain: string })[] = [];
   let costUsd = 0;
   const usage = { inputTokens: 0, outputTokens: 0 };

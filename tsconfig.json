@@ -10,8 +10,42 @@
     "rootDir": "src",
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@eliasstravik/gtm": [
+        "./src/index.ts"
+      ],
+      "@eliasstravik/gtm/proxy": [
+        "./src/core/proxy.ts"
+      ],
+      "@eliasstravik/gtm/server": [
+        "./src/core/server.ts"
+      ],
+      "@eliasstravik/gtm/next": [
+        "./src/core/next.ts"
+      ],
+      "@eliasstravik/gtm/cli": [
+        "./src/cli-kit.ts"
+      ],
+      "@eliasstravik/gtm/kit": [
+        "./src/kit/index.ts"
+      ],
+      "@eliasstravik/gtm/kit/*": [
+        "./src/kit/*.ts"
+      ],
+      "@eliasstravik/gtm/ui": [
+        "./src/ui/index.ts"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

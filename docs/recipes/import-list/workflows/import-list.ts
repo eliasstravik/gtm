@@ -1,4 +1,4 @@
-import { db } from "@eliasstravik/gtm/db";
+import { db } from "#gtm/database";
 import { companies } from "../db/schema";
 
 type Company = { name: string; domain: string };

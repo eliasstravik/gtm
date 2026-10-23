@@ -2,7 +2,7 @@
 
 Ready-made workflows to copy into a project when a person asks for one, never on the agent's own initiative.
 `init` adds none (`init --example` adds a separate, marked example for demos). Read one with
-`npx @eliasstravik/gtm docs recipes/<name>`; its files are in `node_modules/@eliasstravik/gtm/docs/recipes/<name>/`.
+`npx gtm docs recipes/<name>`; its files are in `node_modules/@eliasstravik/gtm/docs/recipes/<name>/`.
 
 | Recipe | Builds | Requests like |
 | --- | --- | --- |
@@ -12,12 +12,12 @@ Ready-made workflows to copy into a project when a person asks for one, never on
 
 Each recipe folder mirrors the project: copy `workflows/<name>.ts` as is, append `schema.ts` (when there is one) to
 `db/schema.ts`, add the registry entry its README gives to `workflows/index.ts`, then run `npm run db:generate`,
-`npm run db:migrate` and `npx @eliasstravik/gtm check`. Rename tables and fields to the company's words when the
+`npx gtm migrate` and `npx gtm check`. Rename tables and fields to the company's words when the
 person wants; a recipe is a starting point, not a contract.
 
 Rules every recipe keeps:
 
 - Ask where the list comes from (a CSV, an existing table, a service) when the person has not said; never default to
   a vendor. A service the person names is called from a step written against its documentation, with its key added
-  to `.env.example` (connections.md).
-- Building a workflow starts no paid run. Preview, then yes in chat, then run (workflows.md).
+  to `.env.example` (docs: connections).
+- Building a workflow starts no paid run. Preview, then a yes in chat, then `--approve` (`npx gtm docs ledger`).

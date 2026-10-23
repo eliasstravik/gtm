@@ -6,9 +6,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** next/link is CommonJS: under NodeNext its default import is typed as the module, but bundlers hand over the component. */
 export const Link = NextLink as unknown as typeof NextLink.default;
 
+/** The address of `/api/gtm/<path>` under the app's base path. */
+export const apiUrl = (path: string) => `${process.env.__NEXT_ROUTER_BASEPATH ?? ""}/api/gtm/${path}`;
+
+/** A page of this project in Vercel's dashboard: Vercel's `/d` link, which asks for the team and project (`path` after them). */
+export const vercelUrl = (path: string, title: string) =>
+  `https://vercel.com/d?to=${encodeURIComponent(`/[team]/[project]${path}`)}&title=${encodeURIComponent(title)}`;
+
 /** Calls `/api/gtm/<path>`; throws the API's `{ error }` text (or the HTTP status) on failure. */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/gtm/${path}`, { cache: "no-store", ...init });
+  const res = await fetch(apiUrl(path), { cache: "no-store", ...init });
   const body = await res.json().catch(() => null);
   if (!res.ok || body == null) throw new Error(body?.error ?? `${res.status} ${res.statusText}`.trim());
   return body as T;

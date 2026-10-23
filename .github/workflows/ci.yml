@@ -1,4 +1,6 @@
-# Plan §1/§7: build, `npm pack`, then run the §7.1–8 acceptance checks against that tarball. No publish steps.
+# Build, unit and check-rule tests, the ledger on real Postgres (a service container started before the firewall),
+# check:names, `npm pack`, then the acceptance suite against that tarball inside a firewall that allows only the npm
+# registry. No publish steps.
 name: ci
 
 on:
@@ -12,8 +14,18 @@ jobs:
   acceptance:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["127.0.0.1:5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -23,11 +35,16 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Slack agent tests (fake Slack, eve's own eval runner)
-        run: node --test test/slack/*.test.mjs
+      - name: Typecheck, unit tests and every gtm check rule
+        run: npm run check
 
-      - name: gtm skill form, gtm init folder choice (built CLI, no install), agent()'s pure parts
-        run: node --test test/skill.test.mjs test/init.test.mjs test/ai.test.mjs
+      - name: The ledger on Postgres 16 and on PGlite
+        env:
+          GTM_TEST_PG_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: node --test test/ledger/*.test.mjs
+
+      - name: Line budgets
+        run: npm run lines
 
       - name: Pack
         run: |
@@ -35,7 +52,23 @@ jobs:
           npm pack --pack-destination /tmp/gtm-ci
           ls -l /tmp/gtm-ci
 
-      # §7: the checks run inside a network sandbox that allows only the npm registry. The runner itself must keep
+      # Public copy names no alternative or competing product: every tracked file, the tarball and the commit messages
+      # being added. The list is a secret, so fork pull requests (which get no secrets) skip it.
+      - name: check:names
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GTM_RIVAL_NAMES: ${{ secrets.GTM_RIVAL_NAMES }}
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$GTM_RIVAL_NAMES" ]; then echo "::warning::GTM_RIVAL_NAMES is not set as a repository secret, so check:names was skipped (release.yml requires it)."; exit 0; fi
+          from=${BASE:-$BEFORE}
+          if [ -z "$from" ] || ! git cat-file -e "$from" 2>/dev/null || [ "$from" = "0000000000000000000000000000000000000000" ]; then range="$HEAD"; else range="$from..$HEAD"; fi
+          npm run check:names -- --tarball "$(ls /tmp/gtm-ci/*.tgz)" --messages "$range"
+          npm run check:names
+
+      # The checks run inside a network sandbox that allows only the npm registry. The runner itself must keep
       # talking to GitHub, so the tests run as a separate user whose outbound traffic is limited to loopback (the app,
       # PGlite, systemd-resolved's stub resolver), the configured DNS servers and HTTPS to registry.npmjs.org's
       # addresses. It is address-based: those are shared CDN addresses, so this catches calls to any other service
@@ -64,7 +97,7 @@ jobs:
           if sudo -u gtmtest curl -sS -o /dev/null --max-time 10 https://api.vercel.com/; then echo "sandbox is open" && exit 1; fi
           echo "other hosts: blocked"
 
-      - name: Acceptance §7.1–8 against the tarball
+      - name: Acceptance against the tarball
         run: |
           sudo -u gtmtest -H env "PATH=$PATH" "GTM_TEST_TARBALL=$(ls /tmp/gtm-ci/*.tgz)" \
             GTM_TEST_DIR=/tmp/gtm-work GTM_TEST_LOGS=/tmp/gtm-logs \

@@ -1,10 +1,10 @@
 // An example from `gtm init --example`: saves a list of companies to the example_companies table, which the
-// Console's Data view shows. `npx @eliasstravik/gtm run example-import` saves three sample companies.
+// console's Data view shows. `npx gtm run example-import` saves three sample companies.
 //
 // To remove the example before anything reached production: delete this file and context/example-icp.md, empty
 // the registry in workflows/index.ts and db/schema.ts back to `export {}`, delete db/migrations/, and delete .gtm/
 // (the local database) so the table goes too.
-import { db } from "@eliasstravik/gtm/db";
+import { db } from "#gtm/database";
 import { exampleCompanies } from "../db/schema";
 
 type Company = { name: string; domain: string };

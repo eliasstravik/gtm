@@ -1,0 +1,171 @@
+/* The Console's shared stylesheet: the gtm-skills workflows viewer's look (Geist, neutral greys, 24px edges, hairline
+   rules), with a sidebar instead of top tabs. Light and dark follow the system setting. */
+:root {
+  color-scheme: light dark;
+  --bg: #fff;
+  --surface: #fafafa;
+  --hover: #f2f2f2;
+  --text: #171717;
+  --muted: #666;
+  --border: #e5e5e5;
+  --focus: #0070f3;
+  --ok: light-dark(#107d32, #62c073);
+  --failed: light-dark(#cb2a2f, #ff6166);
+  --running: light-dark(#0068d6, #52a8ff);
+  --amber: light-dark(#a35200, #ffb224);
+  --line: color-mix(in srgb, var(--muted) 38%, transparent);
+  --mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 14px/1.5 "Geist Variable", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0a0a0a; --surface: #141414; --hover: #202020; --text: #ededed; --muted: #a1a1a1; --border: #2a2a2a; --focus: #52a8ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+button, input, select { font: inherit; color: inherit; }
+button, .button, input, select { min-height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 5px 10px; }
+button, .button, select, summary { cursor: pointer; }
+.button { display: inline-flex; align-items: center; white-space: nowrap; }
+button:hover, .button:hover { background: var(--hover); text-decoration: none; }
+button:disabled { opacity: 0.5; cursor: default; }
+button:disabled:hover { background: var(--bg); }
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+input:focus-visible { outline-offset: -1px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 20px; font-weight: 600; }
+h2 { font-size: 16px; font-weight: 600; }
+h3 { font-size: 14px; }
+code, .mono { font-family: var(--mono); font-size: 0.92em; }
+.muted { color: var(--muted); }
+.error { color: var(--failed); }
+.numeric { font-variant-numeric: tabular-nums; }
+.sr-only, caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+input[type="checkbox"] { min-height: auto; width: 16px; height: 16px; padding: 0; accent-color: var(--text); }
+.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.primary:hover { opacity: 0.85; background: var(--text); }
+.primary:disabled:hover { background: var(--text); }
+/* Keep native select semantics while styling the browser's top-layer picker. */
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  select { padding-inline: 12px 14px; gap: 16px; align-items: center; }
+  select:hover, select:open { background: var(--surface); }
+  select::picker-icon { content: ""; width: 7px; height: 7px; margin-inline-start: auto; margin-block-start: -3px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); rotate: 45deg; }
+  select::picker(select) {
+    min-inline-size: max(anchor-size(self-inline), 180px); max-inline-size: min(320px, calc(100vw - 16px)); max-block-size: min(320px, calc(100dvh - 24px));
+    margin-block: 5px; padding: 4px; border: 0; border-radius: 8px; background: var(--surface); color: var(--text);
+    box-shadow: 0 0 0 1px var(--border), 0 12px 32px #0003; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; font: inherit;
+  }
+  select option { min-height: 32px; padding: 6px 10px; gap: 16px; border-radius: 4px; overflow-wrap: anywhere; cursor: pointer; }
+  select option:checked { font-weight: 500; }
+  select option:hover, select option:focus-visible { background: var(--hover); outline: none; }
+  select option::checkmark { order: 1; margin-inline-start: auto; color: var(--muted); }
+}
+
+/* The frame: a sidebar with the company, the environment and the sections; below 1024px a top bar and a menu panel. */
+.app { isolation: isolate; min-height: 100dvh; }
+@media (min-width: 1024px) { .app { display: grid; grid-template-columns: 240px minmax(0, 1fr); } }
+.sidebar { display: none; }
+@media (min-width: 1024px) {
+  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; padding: 16px 12px; border-right: 1px solid var(--border); background: var(--surface); }
+  .app > .topbar { display: none; }
+}
+.brand { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; min-height: 64px; padding: 11px 8px 0; }
+.company { max-width: 100%; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company:hover { text-decoration: none; }
+.nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.nav a { display: flex; align-items: center; min-height: 32px; padding: 0 8px; border-radius: 6px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.nav a[aria-current] { background: var(--hover); color: var(--text); }
+.nav .sub a { padding-left: 24px; }
+/* How many keys are not set here, as on the viewer's Connections tab. */
+.nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: auto; padding: 0 5px; border-radius: 9999px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--failed); background: color-mix(in srgb, var(--failed) 12%, var(--bg)); }
+.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 16px 0 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.topbar .brand, .drawer .brand { flex-direction: row; align-items: center; gap: 10px; min-height: 0; padding: 0; flex: 1; }
+.topbar .company, .drawer .company { font-size: 16px; }
+.icon { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; border-radius: 6px; }
+.icon svg { fill: none; }
+.drawer { margin: 0; padding: 0; width: min(300px, 85vw); max-width: none; height: 100dvh; max-height: none; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); }
+.drawer::backdrop { background: #0006; }
+.drawer-panel { height: 100%; overflow-y: auto; padding: 0 12px 16px; }
+:root:has(.drawer[open]) { overflow: hidden; }
+/* Close sits where the menu button was, so the same tap opens and closes. */
+.drawer-top { display: flex; align-items: center; gap: 8px; min-height: 56px; margin: 0 0 8px -4px; }
+.drawer .nav a { min-height: 40px; font-size: 16px; }
+.main { min-width: 0; display: flex; flex-direction: column; min-height: 100dvh; }
+@media (max-width: 1023px) { .main { min-height: calc(100dvh - 57px); } .main.fill { height: calc(100dvh - 57px); overflow: hidden; } }
+/* Views with a toolbar and a table fill the window, so their header row stays put and the table scrolls under it. */
+@media (min-width: 1024px) { .main.fill { height: 100dvh; overflow: hidden; } }
+:root[data-environment="local"] body::before { content: ""; position: fixed; inset: 0 0 auto; z-index: 100; height: 2px; background: light-dark(#f5a524, #ffb224); pointer-events: none; }
+
+dialog { width: 460px; max-width: calc(100vw - 32px); padding: 24px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--bg); }
+dialog::backdrop { background: #0006; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+/* Page parts: a title row on the 24px edge, then a toolbar, a table or a list. */
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 64px; padding: 20px 24px 8px; }
+.title-row > p { color: var(--muted); }
+.breadcrumbs { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.breadcrumbs > a { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.breadcrumbs h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtitle { padding: 0 24px 12px; color: var(--muted); max-width: 80ch; }
+.page { padding: 0 24px 40px; max-width: 1148px; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; flex-shrink: 0; padding: 12px 24px; border-bottom: 1px solid var(--border); }
+.toolbar .end { margin-left: auto; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.icon-button { display: inline-grid; place-items: center; width: 32px; padding: 0; }
+.icon-button svg { width: 16px; height: 16px; fill: currentColor; }
+@media (pointer: coarse) { .icon-button { position: relative; } .icon-button::after { content: ""; position: absolute; inset: -6px; } }
+/* A button's menu of actions (menu.tsx), in the top layer under its button. */
+.menu-trigger { display: inline-flex; align-items: center; gap: 10px; }
+.menu-trigger::after { content: ""; width: 7px; height: 7px; margin-top: -4px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); rotate: 45deg; }
+.menu-trigger:has(+ .menu:popover-open) { background: var(--hover); }
+.menu {
+  position: fixed; inset: var(--popover-top, 0) auto auto var(--popover-left, 0); margin: 0; min-width: 168px; padding: 4px;
+  border: 0; border-radius: 8px; color: var(--text); background: var(--bg); box-shadow: 0 0 0 1px var(--border), 0 12px 32px #0003;
+}
+.menu:popover-open { display: grid; }
+.menu [role="menuitem"] { display: flex; align-items: center; min-height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: none; text-align: left; white-space: nowrap; }
+.menu [role="menuitem"]:hover:not(:disabled), .menu [role="menuitem"]:focus-visible { background: var(--hover); text-decoration: none; outline: none; }
+.notice { padding: 24px; color: var(--muted); }
+.notice.error { color: var(--failed); }
+.page > .notice { padding: 24px 0; }
+.pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.table-scroll { overflow: auto; flex: 1; min-height: 0; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; font-variant-numeric: tabular-nums; }
+th { position: sticky; top: 0; z-index: 1; background: var(--surface); font-weight: 500; white-space: nowrap; color: var(--muted); }
+th, td { padding: 10px 24px; border-bottom: 1px solid var(--border); }
+td .muted { font-size: 13px; }
+.pagination, .grid-footer { display: flex; gap: 20px; justify-content: flex-end; align-items: center; flex-shrink: 0; min-height: 42px; margin: 0; padding: 10px 24px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.status { display: inline-flex; gap: 7px; align-items: center; text-transform: capitalize; white-space: nowrap; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.status-completed::before { background: #17a66a; }
+.status-failed::before { background: #e5484d; }
+.status-running::before { background: #398bff; }
+.status-pending::before { background: #c88c14; }
+.run-error { display: block; max-width: 48ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .title-row { flex-direction: column; align-items: stretch; padding: 16px 12px 4px; }
+  .subtitle { padding-inline: 12px; }
+  .page { padding-inline: 12px; }
+  .toolbar { gap: 8px; padding: 10px 12px; }
+  .toolbar input[type="search"] { flex: 1; min-width: 0; }
+  input, select { font-size: 16px; }
+  th, td { padding: 10px 12px; }
+  .pagination, .grid-footer, .grid-message { padding-inline: 12px; }
+}
+
+/* Local, Preview or Production at the top of the sidebar: Geist's amber, grey and green badges. */
+.environment-badge {
+  --badge: var(--ok);
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; max-width: 100%; min-height: 22px; padding: 3px 8px; border-radius: 11px;
+  font-size: 12px; font-weight: 500; line-height: 14px; color: var(--badge);
+  background: color-mix(in srgb, var(--badge) 10%, var(--bg)); border: 1px solid color-mix(in srgb, var(--badge) 22%, var(--bg));
+}
+.environment-badge::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.environment-badge[data-environment="local"] { --badge: var(--amber); }
+.environment-badge[data-environment="preview"] { --badge: var(--muted); }

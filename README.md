@@ -1,83 +1,124 @@
 # gtm
 
-gtm lets any coding agent (Claude Code, Codex, Cursor or a Slack agent) set up and run a company's
-go-to-market work as an ordinary Next.js project on Vercel. The company's know-how (ICPs, personas, voice) is
-Markdown in its own repo, its workflows are Workflow SDK code the agent writes, and non-technical GTM people
-get one Console to read what the agent knows, see what is running, browse the data and add API keys. Locally
-it needs no sign-ups: a built-in Postgres, the Workflow SDK's local world, and AI steps on your own
-`claude`/`codex`. Live, the same project is one Vercel project behind Vercel's own login, with AI steps on AI
-Gateway. Nothing is hosted by us; the keys and services are the company's own.
+**The open-source agent plugin that runs your GTM.**
 
-## Get started
+Add it to Claude Code, Codex or Cursor and say "set up GTM for Acme". Your agent builds the workflows. gtm runs them on
+Vercel, keeps a record of every run and dollar, and gives your team a console. Your repo, your keys, and every part is a
+plugin.
 
-1. **Skill**, for any agent: `npx skills add eliasstravik/gtm -g`, then ask your agent to "set up GTM for Acme"
-   (it runs `npx @eliasstravik/gtm init --company Acme`, which creates `./gtm-acme` with the base files only, then
-   asks what to add). For a demo, `init --company Acme --example` adds one small marked example workflow.
-2. **Claude Code plugin**: `/plugin marketplace add eliasstravik/gtm` then `/plugin install gtm@eliasstravik`
-   (or `npx plugins add eliasstravik/gtm`).
-3. **Deploy button**: deploys the starter at `v0.0.4` as a new Vercel project with Neon, suggested as
-   `gtm-company`: put the company's name in place of `company` (`gtm-acme`) for both the repo and the project (no
-   Slack agent; add it later with `npx @eliasstravik/gtm init --slack`). The Console fails closed, showing "Turn on Vercel
-   Authentication → All Deployments", until production protection is on; follow [docs/deploy.md](docs/deploy.md).
+```sh
+npx skills add eliasstravik/gtm -g     # the skill, for any agent
+# then ask your agent: "set up GTM for Acme"
+npm run dev                            # in ./gtm-acme: the console on http://127.0.0.1:3000
+```
 
-   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.4%2Fstarter&project-name=gtm-company&repository-name=gtm-company&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
+In Claude Code you can install it as a plugin instead: `/plugin marketplace add eliasstravik/gtm`, then
+`/plugin install gtm@eliasstravik` (or `npx plugins add eliasstravik/gtm` for hosts that read `plugin.json`).
 
-## What you get
+## What it is
 
-One repo per company, named `gtm-<company>` (`gtm-acme`): `context/` (Markdown), `.agents/skills/` (the company's
-skills, one `<name>/SKILL.md` each, for Claude Code, Codex, the Slack agent and workflow `agent()` steps),
-`workflows/` (the registry in `workflows/index.ts`), `db/` (workflow-owned tables), `app/` (the Console and webhooks), `AGENTS.md` with a managed
-block, `.env.example` listing every connection, and `vercel.json` for schedules. The full layout is in
-[docs/layout.md](docs/layout.md); the template itself is [starter/](starter/).
+gtm doesn't build the "how" of go-to-market work: playbooks, scoring, templates, enrichment waterfalls or vendor
+wrappers. Agents write those, and they get better at it every year. gtm builds the parts agents plug into, the ones no
+company should have to rebuild:
 
-The Console is the web UI the GTM team uses: a sidebar with the company and its environment, then **Context**
-(what the agent knows), **Workflows** with their **Runs**, **Data** (every workflow table, searchable, with CSV and
-JSON export) and **Connections** (which API keys are set; add or replace one). Risky or costly runs start only after
-a yes in chat; the Console has no start or approve buttons.
+- durable execution (Workflow SDK workflows, on Vercel Workflow when live)
+- a place to keep records (the company's own Postgres: PGlite locally, Neon live)
+- a safe path for keys (environment variables; values never in chat, the console or git)
+- a screen for teammates who don't use an agent (the console: read and navigation only)
+- a lasting record of what ran, what it cost and who said yes (the ledger)
+- access control on every route
+
+Locally it needs no sign-ups: a built-in Postgres, the Workflow SDK's local world, and AI steps on your own `claude` or
+`codex` login. Live, the same project is one Vercel project behind Vercel's own login. Nothing is hosted by this
+project, there is no telemetry, and the keys and services are the company's own.
+
+## Every part is a plugin
+
+`gtm init` writes `gtm.config.ts` with seven default plugins, each one line you can remove or replace:
+
+| Plugin | What it does |
+| --- | --- |
+| `database` | `db()` on the company's Postgres, migrations, the Data view |
+| `ledger` | every run, refused start, cost and approval; budgets; the Runs view |
+| `workflows` | the workflow registry, the one start path, `fanOut()`, webhooks, schedules, `gtm run` |
+| `ai` | `agent()`: every AI call, metered and capped |
+| `context` | the company's context and skills, the console's home |
+| `connections` | which keys are set, and `gtm connections set` for local ones |
+| `console` | the console's frame, for every plugin's pages |
+
+A plugin can add tables, console pages and sidebar items, workflow tabs, routes with an access rule, CLI commands,
+skills, AGENTS.md lines, connection names, checks and docs, without editing this package. `gtm sync` turns the list
+into committed files, `gtm check` runs first in every build, and `gtm add`, `remove`, `eject` and `diff` manage
+plugins. See [docs/plugins.md](docs/plugins.md).
+
+## A yes is a record
+
+A workflow marked `approval: { required: true }` spends nothing without a recorded yes: your agent runs a preview,
+shows you the sample and the cost, asks Yes/No in chat, and only then runs it with `--approve --max-usd`. Schedules are
+approved in the registry, through git. Every metered call is reserved before it runs against the run's budget, the
+approved total and the monthly caps. See the [ledger](src/plugins/ledger/docs/ledger.md) docs.
 
 ## Docs
 
-The docs match the installed version: `npx @eliasstravik/gtm docs [topic]`, or
-`node_modules/@eliasstravik/gtm/docs/` in a project.
+The docs match the installed version: `npx gtm docs [topic]` in a project.
 
 | Topic | |
 | --- | --- |
-| [layout](docs/layout.md) | the project layout and what the Console reads |
-| [recipes](docs/recipes.md) | ready-made workflows to copy: import a list, enrich companies, a weekly scheduled job |
-| [context](docs/context.md) | the basics at setup, and a suggested layout for company facts, members, ICPs, personas |
-| [interaction](docs/interaction.md) | how agents talk to the GTM team: plain replies, one question at a time, what needs a yes |
-| [workflows](docs/workflows.md) | the registry, preview → yes in chat → run, `gtm run`, run size |
-| [data](docs/data.md) | `db()`, migrations, the production stamp, local data |
-| [connections](docs/connections.md) | `.env.example`, saving keys locally and live |
-| [local](docs/local.md) | zero-sign-up local work, AI step backends, switching to real services |
-| [deploy](docs/deploy.md) | going live on Vercel |
-| [webhooks](docs/webhooks.md) | inbound webhooks |
-| [slack](docs/slack.md) | the optional Slack agent |
+| [plugins](docs/plugins.md) | the plugin list, writing a plugin, the contract, slots and binding files, the entry rule |
+| [layout](docs/layout.md) | the project layout and what is whose |
+| [workflows](src/plugins/workflows/docs/workflows.md) | the registry, `fanOut`, preview → yes → `--approve`, `gtm run`, run size |
+| [ledger](src/plugins/ledger/docs/ledger.md) | approvals, schedules, budgets, `action()`, failure modes, deleting natural keys |
+| [ai](src/plugins/ai/docs/ai.md) | `agent()`, its backends, models and cost |
+| [data](src/plugins/database/docs/data.md) | `db()`, migrations, the production stamp, local data |
+| [connections](src/plugins/connections/docs/connections.md) | keys, locally and live |
+| [context](src/plugins/context/docs/context.md) | the basics at setup, and a suggested layout for company facts |
+| [webhooks](src/plugins/workflows/docs/webhooks.md) | inbound webhooks |
+| [recipes](docs/recipes.md) | ready-made workflows to copy |
+| [interaction](docs/interaction.md) | how agents talk to the GTM team |
+| [local](docs/local.md), [deploy](docs/deploy.md), [upgrade](docs/upgrade.md) | working locally, going live, upgrading from 0.0.x |
 
-## Future direction
+## Deploy
 
-Not built yet, but the layout leaves room for them: built-in CRM and sequencer parts, and **Artifacts**, pages the
-agent makes for the company (reports, dashboards) listed in the Console's sidebar.
+The live project is the same repo as one Vercel Pro project with Neon from the Vercel Marketplace, behind Vercel
+Authentication on all deployments. Follow [docs/deploy.md](docs/deploy.md); `npx gtm check --prod` says what is
+missing.
 
-## Releasing
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feliasstravik%2Fgtm%2Ftree%2Fv0.0.5%2Fstarter&project-name=gtm-company&repository-name=gtm-company&stores=%5B%7B%22type%22%3A%22integration%22%2C%22protocol%22%3A%22storage%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%7D%5D)
 
-One version for the package, the starter's pin, the plugin manifests and the Deploy button's tag. Releases publish
-from GitHub Actions ([release.yml](.github/workflows/release.yml)) through npm trusted publishing, so no npm token
-lives on any machine and every version carries provenance:
+The button deploys the starter at `v0.0.5`; name the project `gtm-<company>`. The console fails closed ("Turn on
+Vercel Authentication → All Deployments") until production protection is on.
 
-1. Set `version` in `package.json` (and `package-lock.json`) to the release candidate, for example `0.0.5-rc.1`, merge
-   to `main`, then push the tag: `git tag v0.0.5-rc.1 && git push origin v0.0.5-rc.1`. A pre-release tag publishes
-   under `next`; mark its GitHub release as a pre-release.
-2. Check the candidate in a project made with `npx @eliasstravik/gtm@next init`, which pins the candidate
-   (`^0.0.5-rc.1`), and in a Vercel deploy of such a project. Not the starter or the Deploy button: their `^0.0.4`
-   pin never matches a pre-release, so they would still install the previous version.
-3. Set `version` to `0.0.5` in `package.json`, `package-lock.json`, `plugin.json` and `.claude-plugin/plugin.json`,
-   the MCP client version in `src/ai/tools.ts`, the starter's pin to `^0.0.5` and the Deploy button's tag to `v0.0.5`;
-   merge, push tag `v0.0.5` (publishes under `latest`) and make its GitHub release.
+## Roadmap
 
-The tag must match `package.json`, or the workflow refuses. The trust between npm and this repo's `release.yml` was
-set once with `npm trust github @eliasstravik/gtm --repo eliasstravik/gtm --file release.yml --allow-publish`;
-renaming the workflow file breaks it.
+Each starts as an optional plugin, and joins the defaults only by the entry rule in [docs/plugins.md](docs/plugins.md).
+
+| Next | When |
+| --- | --- |
+| An MCP server for gtm | agents outside a CLI need to work through gtm |
+| A sequencer slot with a local test channel, a send guard, an opt-out list and `gtm ledger forget` | sending work starts |
+| An in-app CRM: tables and pages inside gtm with a small read contract for the send guard | it is built |
+| A chat channel plugin | demand, and a way to verify who approves |
+| Signing in with an existing coding-agent subscription for local AI steps | a local AI path without `claude` or `codex` is needed |
+| Keys outside the project folder, and OAuth connections | vendors need OAuth, or local keys must leave the folder |
+| Enrichment, other engines, vendor plugins | demand; vendors or the community build them |
+| A practice arena for outreach | a backtest on real logs beats a simple baseline at predicting past reply rates |
+| A sell-to-me endpoint | a B2B quote standard exists and buyers query vendors through it in production |
+
+Not planned: a hosted gtm service run by this project.
+
+## Developing gtm
+
+```sh
+npm ci
+npm run build && npm run check        # typecheck and unit tests
+npm test                              # unit tests, then the acceptance suite against a packed tarball
+GTM_TEST_PG_URL=postgres://… node --test test/ledger/*.test.mjs   # the ledger on real Postgres and on PGlite
+npm run lines                         # line counts per plugin against their budgets
+```
+
+Releases: `npm run version:bump <x.y.z>` sets one version across the package, the plugin manifests, the starter's pin
+and the Deploy button; [release.yml](.github/workflows/release.yml) publishes a pushed `v<x.y.z>` tag through npm trusted
+publishing after `npm run check:names` passes.
 
 ## License
 
