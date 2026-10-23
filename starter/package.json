@@ -4,13 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "gtm dev",
-    "build": "gtm migrate && next build",
+    "build": "gtm check --build && gtm migrate && next build",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "gtm migrate"
+    "db:migrate": "gtm migrate",
+    "sync": "gtm sync",
+    "check": "gtm check"
   },
   "dependencies": {
     "@ai-sdk/workflow": "2.0.75",
-    "@eliasstravik/gtm": "^0.0.4",
+    "@eliasstravik/gtm": "^0.0.5",
     "ai": "7.0.143",
     "drizzle-orm": "0.45.4",
     "next": "16.4.2",
@@ -24,5 +26,6 @@
     "@types/react": "19.3.0",
     "drizzle-kit": "0.31.11",
     "typescript": "5.9.3"
-  }
+  },
+  "imports": {}
 }

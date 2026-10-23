@@ -1,7 +1,7 @@
 {
   "name": "@eliasstravik/gtm",
-  "version": "0.0.4",
-  "description": "A company's go-to-market work as an ordinary Next.js project: context, workflows, a Console and an optional Slack agent.",
+  "version": "0.0.5",
+  "description": "The open-source agent plugin that runs your GTM: workflows your agent writes, run on Vercel, with a record of every run and dollar and a console for your team.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   },
   "type": "module",
   "bin": {
-    "gtm": "dist/cli.js"
+    "gtm": "dist/core/cli.js"
   },
   "files": [
     "dist",
@@ -17,35 +17,103 @@
     "starter",
     "example",
     "skills",
-    "migrations",
-    "slack",
+    "src/plugins",
     "plugin.json",
     ".claude-plugin"
   ],
   "exports": {
-    "./next": {
-      "types": "./dist/next/index.d.ts",
-      "default": "./dist/next/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./proxy": {
-      "types": "./dist/proxy/index.d.ts",
-      "default": "./dist/proxy/index.js"
+      "types": "./dist/core/proxy.d.ts",
+      "default": "./dist/core/proxy.js"
     },
-    "./api": {
-      "types": "./dist/api/index.d.ts",
-      "default": "./dist/api/index.js"
+    "./server": {
+      "types": "./dist/core/server.d.ts",
+      "default": "./dist/core/server.js"
     },
-    "./db": {
-      "types": "./dist/db/index.d.ts",
-      "default": "./dist/db/index.js"
+    "./next": {
+      "types": "./dist/core/next.d.ts",
+      "default": "./dist/core/next.js"
     },
-    "./ai": {
-      "types": "./dist/ai/index.d.ts",
-      "default": "./dist/ai/index.js"
+    "./cli": {
+      "types": "./dist/cli-kit.d.ts",
+      "default": "./dist/cli-kit.js"
+    },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "default": "./dist/kit/index.js"
+    },
+    "./kit/*": {
+      "types": "./dist/kit/*.d.ts",
+      "default": "./dist/kit/*.js"
     },
     "./ui": {
       "types": "./dist/ui/index.d.ts",
       "default": "./dist/ui/index.js"
+    },
+    "./database": {
+      "types": "./dist/plugins/database/index.d.ts",
+      "default": "./dist/plugins/database/index.js"
+    },
+    "./database/runtime": {
+      "types": "./dist/plugins/database/runtime.d.ts",
+      "workflow": "./dist/plugins/database/runtime-workflow.js",
+      "default": "./dist/plugins/database/runtime.js"
+    },
+    "./database/*": {
+      "types": "./dist/plugins/database/*.d.ts",
+      "default": "./dist/plugins/database/*.js"
+    },
+    "./ledger": {
+      "types": "./dist/plugins/ledger/index.d.ts",
+      "default": "./dist/plugins/ledger/index.js"
+    },
+    "./ledger/*": {
+      "types": "./dist/plugins/ledger/*.d.ts",
+      "default": "./dist/plugins/ledger/*.js"
+    },
+    "./workflows": {
+      "types": "./dist/plugins/workflows/index.d.ts",
+      "default": "./dist/plugins/workflows/index.js"
+    },
+    "./workflows/*": {
+      "types": "./dist/plugins/workflows/*.d.ts",
+      "default": "./dist/plugins/workflows/*.js"
+    },
+    "./ai": {
+      "types": "./dist/plugins/ai/index.d.ts",
+      "default": "./dist/plugins/ai/index.js"
+    },
+    "./ai/*": {
+      "types": "./dist/plugins/ai/*.d.ts",
+      "default": "./dist/plugins/ai/*.js"
+    },
+    "./context": {
+      "types": "./dist/plugins/context/index.d.ts",
+      "default": "./dist/plugins/context/index.js"
+    },
+    "./context/*": {
+      "types": "./dist/plugins/context/*.d.ts",
+      "default": "./dist/plugins/context/*.js"
+    },
+    "./connections": {
+      "types": "./dist/plugins/connections/index.d.ts",
+      "default": "./dist/plugins/connections/index.js"
+    },
+    "./connections/*": {
+      "types": "./dist/plugins/connections/*.d.ts",
+      "default": "./dist/plugins/connections/*.js"
+    },
+    "./console": {
+      "types": "./dist/plugins/console/index.d.ts",
+      "default": "./dist/plugins/console/index.js"
+    },
+    "./console/*": {
+      "types": "./dist/plugins/console/*.d.ts",
+      "default": "./dist/plugins/console/*.js"
     },
     "./package.json": "./package.json"
   },
@@ -53,11 +121,13 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json && cp src/ui/*.css dist/ui/ && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc -p tsconfig.json && node scripts/assets.mjs && chmod +x dist/core/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && node --test test/slack/*.test.mjs test/skill.test.mjs",
-    "test": "node --test test/slack/*.test.mjs test/skill.test.mjs test/init.test.mjs test/ai.test.mjs && node --test test/acceptance.test.mjs",
-    "lines": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1 && cat src/ui/*.css | wc -l"
+    "check": "npm run typecheck && node --test test/unit/*.test.mjs",
+    "test": "node --test test/unit/*.test.mjs && node --test test/acceptance.test.mjs",
+    "check:names": "node scripts/check-names.mjs",
+    "lines": "node scripts/lines.mjs",
+    "version:bump": "node scripts/version.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.82",
@@ -69,23 +139,18 @@
     "@next/env": "^16.4.2",
     "@vercel/oidc": "4.0.1",
     "marked": "18.1.1",
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "jiti": "2.7.0"
   },
   "peerDependencies": {
     "@ai-sdk/workflow": "^2.0.75",
     "ai": "^7.0.143",
     "drizzle-orm": "^0.45.4",
-    "eve": "0.80.1",
     "next": "^16.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "workflow": "^5.2.2",
     "zod": "^4.6.7"
-  },
-  "peerDependenciesMeta": {
-    "eve": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@ai-sdk/workflow": "2.0.75",
@@ -94,7 +159,6 @@
     "@types/react": "19.3.0",
     "ai": "7.0.143",
     "drizzle-orm": "0.45.4",
-    "eve": "0.80.1",
     "next": "16.4.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
