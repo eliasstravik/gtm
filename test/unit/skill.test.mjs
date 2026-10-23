@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { test } from "node:test";
 
-const root = new URL("../", import.meta.url);
+const root = new URL("../../", import.meta.url);
 const read = (rel) => fs.readFileSync(new URL(rel, root), "utf8");
 const skill = read("skills/gtm/SKILL.md");
 const [, front, body] = skill.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/) ?? [];

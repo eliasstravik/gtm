@@ -1,10 +1,11 @@
 /** agent()'s pure parts, against the build (`npm run build` first): backend choice, model ids, schemas, CLI arguments and replies, skills. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { claudeArgs, codexArgs, excerpt, parseClaude, parseCodex } from "../dist/ai/cli.js";
-import { chooseBackend, cliModel, providerModel, sanitizeSchema } from "../dist/ai/models.js";
-import { aiRule, mask } from "../dist/cli/check.js";
-import { parseSkill } from "../dist/shared/skill.js";
+import { claudeArgs, codexArgs, excerpt, parseClaude, parseCodex } from "../../dist/plugins/ai/cli.js";
+import { chooseBackend, cliModel, providerModel, sanitizeSchema } from "../../dist/plugins/ai/models.js";
+import { codeFindings } from "../../dist/core/check.js";
+import { mask } from "../../dist/core/mask.js";
+import { parseSkill } from "../../dist/kit/skill.js";
 
 const VARS = ["VERCEL_ENV", "VERCEL_DEPLOYMENT_ID", "NODE_ENV", "GTM_DEV", "AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN", "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY", "GTM_MODEL", "GTM_AGENT_BACKEND"];
@@ -109,14 +110,14 @@ test("excerpt masks keys and tokens and stays short", () => {
 });
 
 test("gtm check flags AI SDK imports and model ids in workflows/, not agent() or a stage's own model", () => {
-  const src = `import { agent, tool } from "@eliasstravik/gtm/ai";\nimport type { ModelMessage } from "ai";\nimport { generateObject } from "ai";
+  const src = `import { agent, tool } from "#gtm/ai";\nimport type { ModelMessage } from "ai";\nimport { generateObject } from "ai";
 import { gateway } from "@ai-sdk/gateway";\nconst MODEL = "openai/gpt-6";\nawait agent({ name: "a", model: "anthropic/claude-sonnet-5.5" });\nfetch("https://api.openai.com/v1");`;
-  assert.deepEqual(aiRule([["workflows/x.ts", src]]).map(([what]) => what),
-    ['workflows/x.ts imports "ai".', 'workflows/x.ts imports "@ai-sdk/gateway".', 'workflows/x.ts names the model "openai/gpt-6".']);
+  assert.deepEqual(codeFindings([["workflows/x.ts", src]], []).map((f) => f.message),
+    ['workflows/x.ts:3 imports "ai".', 'workflows/x.ts:4 imports "@ai-sdk/gateway".', 'workflows/x.ts names the model "openai/gpt-6".']);
 });
 
 test("gtm check ignores AI SDK imports and model ids in comments and strings, and still flags real ones", () => {
-  const flagged = (src) => aiRule([["workflows/x.ts", src]]).map(([what]) => what);
+  const flagged = (src) => codeFindings([["workflows/x.ts", src]], []).map((f) => f.message.replace(/:\d+ /, " "));
   assert.deepEqual(flagged('// Previous implementation: import { generateText } from "ai";\nexport const x = 1;'), [], "line comment");
   assert.deepEqual(flagged('/*\nimport { generateText } from "ai";\nconst m = require("@ai-sdk/openai");\n*/\nexport const x = 1;'), [], "block comment");
   assert.deepEqual(flagged('/** Was: `await import("ai")` with model: "openai/gpt-6" */\nexport const x = 1;'), [], "doc comment");

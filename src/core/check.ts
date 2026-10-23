@@ -11,7 +11,7 @@ import { isBranded } from "../kit/brand.js";
 import { sameShape, segments } from "../kit/patterns.js";
 import { basePlugin, BASE, CONFIG, loadConfig, PACKAGE, projectJiti } from "./config.js";
 import { CORE_COMMANDS, CORE_TOPICS } from "./commands.js";
-import { imports } from "./mask.js";
+import { imports, mask } from "./mask.js";
 import { findProject, loadEnv, packageRoot, readJson } from "./project.js";
 import { MATCHER, plan, type Plan, schemaOf, stale } from "./sync.js";
 import type { CheckResult, GtmConfig, GtmPlugin } from "./types.js";
@@ -231,9 +231,14 @@ function sources(dir: string, folder: string): [string, string][] {
  * `@eliasstravik/gtm/<plugin>` subpaths (a plugin's own folder may use its own), and workflows/ names no model id.
  */
 export function companyCode(dir: string, plugins: GtmPlugin[]): CheckResult[] {
+  return codeFindings([...sources(dir, "workflows"), ...sources(dir, "webhooks"), ...sources(dir, "plugins")], plugins);
+}
+
+/** companyCode's rules on [project path, text] pairs. */
+export function codeFindings(files: [string, string][], plugins: GtmPlugin[]): CheckResult[] {
   const out: CheckResult[] = [];
   const local = new Map(plugins.map((p) => [p.name, p]));
-  for (const [file, text] of [...sources(dir, "workflows"), ...sources(dir, "webhooks"), ...sources(dir, "plugins")]) {
+  for (const [file, text] of files) {
     const owner = file.startsWith("plugins/") ? file.split("/")[1] : undefined, p = owner ? local.get(owner) : undefined;
     const exempt = Boolean(p && ((p.provides ?? []).includes("workflows") || ((p.capabilities ?? []).includes("spends") && p.name === "ai")));
     for (const i of imports(text)) {
@@ -251,8 +256,7 @@ export function companyCode(dir: string, plugins: GtmPlugin[]): CheckResult[] {
       }
     }
     if (file.startsWith("workflows/")) {
-      const masked = text.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "");
-      for (const [, own, id] of masked.matchAll(MODEL_ID)) if (!own) out.push({ level: "error", message: `${file} names the model "${id}".`, fix: "remove it; GTM_MODEL picks the model, and a stage that truly needs another one sets agent()'s `model`" });
+      for (const [, own, id] of mask(text).text.matchAll(MODEL_ID)) if (!own) out.push({ level: "error", message: `${file} names the model "${id}".`, fix: "remove it; GTM_MODEL picks the model, and a stage that truly needs another one sets agent()'s `model`" });
     }
   }
   return out;

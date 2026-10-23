@@ -72,6 +72,8 @@ export type Import = { spec: string; typeOnly: boolean; names: string[]; line: n
 export function imports(src: string): Import[] {
   const m = mask(src), out: Import[] = [];
   const lineAt = (i: number) => src.slice(0, i).split("\n").length;
+  /** The line of a match's first non-blank character (the pattern may start with the previous line's newline). */
+  const at = (hit: RegExpExecArray | RegExpMatchArray) => lineAt(hit.index! + Math.max(0, hit[0].search(/\S/)));
   const STATIC = /(?:^|[\s;])(import|export)\s+(type\s+)?([^'";]*?)\s*from\s*["']/g;
   for (const hit of m.code.matchAll(STATIC)) {
     const start = hit.index + hit[0].length, spec = m.text.slice(start, m.text.indexOf(hit[0].at(-1)!, start));
@@ -80,15 +82,15 @@ export function imports(src: string): Import[] {
     const outside = clause.replace(/\{[^}]*\}/, "").replace(/,/g, "").trim();
     const typeOnly = Boolean(hit[2]) || (!outside && members.length > 0 && members.every((n) => /^type\s/.test(n)));
     const names = members.filter((n) => !/^type\s/.test(n)).map((n) => n.split(/\s+as\s+/)[0].trim());
-    out.push({ spec, typeOnly, names, line: lineAt(hit.index) });
+    out.push({ spec, typeOnly, names, line: at(hit) });
   }
   for (const hit of m.code.matchAll(/(?:^|[\s;(=,])(?:import|require)\s*\(\s*["']/g)) {
     const start = hit.index + hit[0].length;
-    out.push({ spec: m.text.slice(start, m.text.indexOf(hit[0].at(-1)!, start)), typeOnly: false, names: [], line: lineAt(hit.index) });
+    out.push({ spec: m.text.slice(start, m.text.indexOf(hit[0].at(-1)!, start)), typeOnly: false, names: [], line: at(hit) });
   }
   for (const hit of m.code.matchAll(/(?:^|[\s;])import\s*["']/g)) {
     const start = hit.index + hit[0].length;
-    out.push({ spec: m.text.slice(start, m.text.indexOf(hit[0].at(-1)!, start)), typeOnly: false, names: [], line: lineAt(hit.index) });
+    out.push({ spec: m.text.slice(start, m.text.indexOf(hit[0].at(-1)!, start)), typeOnly: false, names: [], line: at(hit) });
   }
   return out;
 }

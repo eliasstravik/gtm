@@ -20,6 +20,8 @@ class GtmPool extends pg.Pool {
   constructor(url: string) {
     super({ connectionString: url, max: isHosted() ? undefined : 3 });
     this.#url = url;
+    // An idle client the server dropped (a restart, a pooler timeout) must not crash the process; the next query reconnects.
+    this.on("error", (error) => console.error(`gtm db(): an idle database connection closed (${error.message})`));
   }
 
   #check(): Promise<void> {
