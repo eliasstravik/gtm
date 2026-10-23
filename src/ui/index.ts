@@ -2,7 +2,7 @@
 import type { ComponentType } from "react";
 import type { About, Manifest, RegistryInfo } from "../core/types.js";
 
-export { api, apiUrl, duration, Link, Search, Status, time, useApi, useQuery } from "./load.js";
+export { api, apiUrl, duration, Link, vercelUrl, Search, Status, time, useApi, useQuery } from "./load.js";
 export { glyphs, Icon, Menu, place } from "./menu.js";
 export { Markdown } from "./markdown.js";
 

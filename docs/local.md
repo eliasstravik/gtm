@@ -30,8 +30,9 @@ Host kept.
 
 **Anyone on that private network gets in without a login** and reads Context, Workflows, Runs, Data and Connections.
 Nothing there writes: `session` routes are read-only, and `automation` and `local` routes (start, run status, the run
-inspector, Open database) answer only on `127.0.0.1`/`localhost`, so nobody else runs stages on the owner's
-subscription. Run workflows on this machine with `npx gtm run`.
+inspector) answer only on `127.0.0.1`/`localhost`, so nobody else runs stages on the owner's subscription. Run
+workflows on this machine with `npx gtm run`. Open database also works on this machine's own Tailscale name, for the
+Tailscale login that presses it only (docs: data).
 
 ## `GTM_BASE_PATH`
 

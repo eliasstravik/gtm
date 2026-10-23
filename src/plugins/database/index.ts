@@ -21,7 +21,7 @@ export function database() {
       { path: "data/:table", methods: ["GET"], access: "session", handler: `${P}/data#page` },
       { path: "data/:table/:format", methods: ["GET"], access: "session", handler: `${P}/data#exported` },
       { path: "database", methods: ["GET"], access: "session", handler: `${P}/studio#destination` },
-      { path: "database/open", methods: ["POST"], access: "local", handler: `${P}/studio#open` },
+      { path: "database/open", methods: ["POST"], access: "tailnet", handler: `${P}/studio#open` },
     ],
     views: [{ path: "data", title: "Data", nav: { label: "Data", order: 40 }, component: `${P}/view` }],
     workflowTabs: [{ id: "data", title: "Data", order: 30, component: `${P}/tab` }],

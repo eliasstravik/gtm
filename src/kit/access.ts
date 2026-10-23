@@ -33,6 +33,16 @@ function localHost(req: Request, env: Env): Verdict {
   return site === "cross-site" || site === "same-site" || originHost !== host ? no(403, "Cross-site requests are refused.") : OK;
 }
 
+/**
+ * The Tailscale login Serve put on a same-origin request to an allowed (non-loopback) host, never a Funnel one; undefined
+ * otherwise and whenever hosted. Serve sets the header itself, and gtm dev listens on 127.0.0.1 only.
+ */
+export function tailnetLogin(req: Request, env: Env = process.env): string | undefined {
+  const login = req.headers.get("tailscale-user-login")?.trim().toLowerCase();
+  if (!login || req.headers.has("tailscale-funnel-request") || isHosted(env) || LOOPBACK_HOSTS.includes(hostOf(requestHost(req)))) return undefined;
+  return localHost(req, env).ok ? login : undefined;
+}
+
 /** Pages and `session` routes: hosted, Vercel Authentication in front and no bypass credential of any kind. */
 export function pageAccess(req: Request, env: Env = process.env): Verdict {
   if (!isHosted(env)) return localHost(req, env);
@@ -77,6 +87,9 @@ export function routeAccess(access: Access, req: Request, secret?: string, env: 
     case "local":
       if (hosted) return no(404, "Not found.");
       return loopback(req) ? OK : no(403, "This answers only on 127.0.0.1 or localhost, on the computer running gtm dev.");
+    case "tailnet":
+      if (hosted) return no(404, "Not found.");
+      return loopback(req) || tailnetLogin(req, env) ? OK : no(403, "This answers only on the computer running gtm dev, or to a Tailscale login on its name.");
     default:
       return no(500, "Unknown access mode.");
   }

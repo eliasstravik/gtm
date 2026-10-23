@@ -2,7 +2,7 @@
 import { after } from "next/server.js";
 import { sql } from "drizzle-orm";
 import type { RouteCtx } from "@eliasstravik/gtm";
-import { HttpError, isHosted, json } from "@eliasstravik/gtm/kit";
+import { environment, HttpError, isHosted, json } from "@eliasstravik/gtm/kit";
 
 /** GET /ledger/reconcile (cron, hourly in vercel.json) → the pass's counts. */
 export async function reconcile(_req: Request, ctx: RouteCtx): Promise<Response> {
@@ -18,7 +18,7 @@ const STATUSES = ["admitted", "running", "completed", "failed", "cancelled", "un
 const PERIODS: Record<string, string> = { day: "1 day", week: "7 days", month: "30 days" };
 
 /**
- * GET /ledger/runs?workflow=&status=&period=&q=&before= → { data, hasMore, local }: 50 ledger runs a page, newest first, with
+ * GET /ledger/runs?workflow=&status=&period=&q=&before= → { data, hasMore, local, environment }: 50 ledger runs a page, newest first, with
  * their cost and approval. Each read runs a reconcile pass after the response (throttled to one a minute).
  */
 export async function runs(req: Request, ctx: RouteCtx): Promise<Response> {
@@ -46,5 +46,5 @@ export async function runs(req: Request, ctx: RouteCtx): Promise<Response> {
     startedAt: new Date(r.started_at).toISOString(), finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
     costUsd: r.cost_usd, calls: r.calls, unmetered: r.unmetered,
   }));
-  return json({ data, hasMore: rows.length > 50, local: !isHosted() });
+  return json({ data, hasMore: rows.length > 50, local: !isHosted(), environment: environment() });
 }

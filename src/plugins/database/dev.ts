@@ -3,6 +3,7 @@ import type { DevCtx, DevHandle } from "@eliasstravik/gtm/cli";
 import { value } from "@eliasstravik/gtm/kit";
 import { type LocalDatabase, startDevDatabase } from "./localdb.js";
 import { migrate } from "./cli.js";
+import { removeStudioShare } from "./studio.js";
 
 export default async function databaseDev(ctx: DevCtx): Promise<DevHandle> {
   let local: LocalDatabase | undefined;
@@ -17,5 +18,5 @@ export default async function databaseDev(ctx: DevCtx): Promise<DevHandle> {
     await local?.stop();
     throw error;
   }
-  return { stop: () => local?.stop() };
+  return { stop: () => { removeStudioShare(ctx.dir); return local?.stop(); } };
 }

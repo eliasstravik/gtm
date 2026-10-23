@@ -76,6 +76,9 @@ Data view is a preview. It shows on a project with no tables too.
   opens `https://local.drizzle.studio/?port=<port>` (Chrome may ask to allow local network access). One Studio
   per `npm run dev`, reused; it stops with it. A production-stamped database is refused. Studio's connection is
   one of the 10 and shares the one session.
-- Open database answers only on `127.0.0.1`/`localhost`, never on a `GTM_ALLOWED_HOSTS` host.
+- Pressed on this machine's Tailscale name (`GTM_ALLOWED_HOSTS`, through `tailscale serve`), Studio is shared
+  with that same Tailscale login only: Tailscale Serve on the first free HTTPS port from 8443 (never Funnel), in
+  front of a loopback gate that admits only that login. One login per `npm run dev`; it removes the share when it
+  stops. On other allowed hosts, and to devices without a Tailscale login, the button does not show.
 - Hosted it links to the Neon console when `NEON_PROJECT_ID` is set, else to the Vercel project's Storage tab
   (Storage → Open in Neon).

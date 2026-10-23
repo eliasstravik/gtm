@@ -5,9 +5,12 @@
 .banner.retry button { color: var(--text); }
 .connection-actions, .connection-buttons { display: flex; align-items: center; gap: 8px; }
 .connection-buttons { justify-content: flex-end; }
+.connection-open { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.connection-open:hover { color: var(--text); }
+.title-row .actions { display: flex; gap: 8px; }
 .connection-state svg { width: 16px; height: 16px; fill: currentColor; }
 .connection-list { max-width: 1100px; margin-top: 16px; border-top: 1px solid var(--border); }
-.connection-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 96px; gap: 24px; align-items: center; padding: 18px 12px; border-bottom: 1px solid var(--border); }
+.connection-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 24px; align-items: center; padding: 18px 12px; border-bottom: 1px solid var(--border); }
 .connection-name { min-width: 0; overflow-wrap: anywhere; }
 .connection-name h3 { font-size: 16px; font-weight: 600; }
 .connection-variable { font-family: var(--mono); font-size: 12px; }

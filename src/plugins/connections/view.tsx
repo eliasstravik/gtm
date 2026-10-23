@@ -1,6 +1,6 @@
 "use client";
 import { Fragment } from "react";
-import { Icon, Link, Status, useApi } from "@eliasstravik/gtm/ui";
+import { Icon, Link, Status, useApi, vercelUrl } from "@eliasstravik/gtm/ui";
 import "./connections.css";
 
 type State = "set" | "missing" | "provided";
@@ -30,12 +30,14 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
     : !n ? (only ? "None of the keys this workflow uses is listed yet." : "No connections yet. Ask your agent to add one.")
     : missing ? `${missing} of ${n} ${n === 1 ? "key isn't" : "keys aren't"} set ${where}.`
     : `Every key ${only ? "this workflow uses " : ""}is set ${where}.`;
+  const settings = local ? null : vercelUrl("/settings/environment-variables", "Environment Variables");
+  const vercel = settings && <a className="button" href={settings} target="_blank" rel="noreferrer">Open in Vercel ↗</a>;
   const how = (c: Connection) => local ? <>Set it with <code>npx gtm connections set {c.name}</code></>
     : <>Add it in Vercel: <code>vercel env add {c.name} production</code>, then redeploy</>;
   return (
     <div className="connections-view">
-      {only !== undefined ? <div className="title-row"><p role="status">{summary}</p><Link className="button" href="/connections">All connections</Link></div> : <>
-        <div className="title-row"><h1>Connections</h1></div>
+      {only !== undefined ? <div className="title-row"><p role="status">{summary}</p><span className="actions">{vercel}<Link className="button" href="/connections">All connections</Link></span></div> : <>
+        <div className="title-row"><h1>Connections</h1>{vercel}</div>
         <p className="subtitle" role="status">{summary}</p>
       </>}
       <div className="page">
@@ -54,6 +56,7 @@ export function ConnectionsView({ only }: { only?: string[] | null }) {
                 {c.state === "missing" && <p className="muted connection-usage">{how(c)}</p>}
               </div>
               <span className="connection-state" data-state={c.state}><Icon d={icons[c.state === "provided" ? "set" : c.state]} />{LABELS[c.state]}</span>
+              {settings && <a className="connection-open" href={settings} target="_blank" rel="noreferrer" aria-label={`Open ${c.name} in Vercel`}>Open in Vercel ↗</a>}
             </div>
           ))}
         </div>}

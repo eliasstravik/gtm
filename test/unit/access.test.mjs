@@ -20,7 +20,7 @@ const manifest = {
   routes: [
     route("shell", ["GET"], "session"), route("runs/:id", ["GET"], "automation"), route("runs/export", ["GET"], "session"),
     route("start/:name", ["POST"], "automation"), route("cron/:name", ["GET"], "cron"), route("inspector/*", ["GET", "POST"], "local"),
-    route("hooks/:name", ["POST"], "signature", { secret: "GTM_HOOK_{name}_BYPASS" }), route("shared", ["GET"], "session"), route("shared", ["POST"], "automation", { key: "q:shared" }), route("unbranded/:name", ["POST"], "signature", { secret: "X_{name}" }),
+    route("hooks/:name", ["POST"], "signature", { secret: "GTM_HOOK_{name}_BYPASS" }), route("shared", ["GET"], "session"), route("db/open", ["POST"], "tailnet"), route("shared", ["POST"], "automation", { key: "q:shared" }), route("unbranded/:name", ["POST"], "signature", { secret: "X_{name}" }),
   ],
 };
 
@@ -73,6 +73,17 @@ test("local: loopback and allowed hosts read; cross-site POSTs, unknown hosts an
   assert.equal(await status(req("/api/gtm/shared", { method: "POST", host: "box.tail1234.ts.net" })), 403, "with that route's own access mode");
 }));
 
+test("tailnet: loopback, or a same-origin request Tailscale Serve marks with a login on an allowed host; never Funnel or hosted", () => withEnv({ GTM_ALLOWED_HOSTS: "box.tail1234.ts.net" }, async () => {
+  const BOX = "box.tail1234.ts.net", login = { "tailscale-user-login": "person@example.com" };
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST" })), 200);
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: BOX, headers: { ...login, origin: `https://${BOX}` } })), 200);
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: BOX })), 403, "no login");
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: BOX, headers: { ...login, "tailscale-funnel-request": "?1" } })), 403, "Funnel");
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: BOX, headers: { ...login, origin: "https://evil.test" } })), 403, "cross-site");
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: "evil.test", headers: login })), 403, "a host not allowed");
+  assert.equal(await status(req("/api/gtm/inspector/run/x", { host: BOX, headers: login })), 403, "local routes stay loopback only");
+}));
+
 test("a base path: routes and pages are matched below it", () => withEnv({ GTM_BASE_PATH: "/acme" }, async () => {
   assert.equal(await status(req("/acme/api/gtm/start/x", { method: "POST" })), 200);
   assert.equal(await status(req("/acme/api/gtm/nothing")), 404);
@@ -82,6 +93,7 @@ test("a base path: routes and pages are matched below it", () => withEnv({ GTM_B
 }));
 
 test("hosted: pages and session routes refuse every bypass credential", () => withEnv(HOSTED, async () => {
+  assert.equal(await status(req("/api/gtm/db/open", { method: "POST", host: "gtm-acme.vercel.app", headers: { "tailscale-user-login": "person@example.com" } })), 404, "tailnet routes are local");
   const host = "gtm-acme.example.com";
   assert.equal(await status(req("/", { host })), 200);
   assert.equal(await status(req("/icon.svg", { host })), 200);

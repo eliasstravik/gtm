@@ -90,6 +90,7 @@ get `{ workflow, manifest }`. Shared pieces come from `@eliasstravik/gtm/ui` (`u
 | `cron` | `Authorization: Bearer $CRON_SECRET`; refused when unset | the same |
 | `signature` | the sender's own bypass secret (`secret`: its variable, e.g. `GTM_HOOK_{name}_BYPASS`), never the automation one; the handler is built with `webhook()` | loopback |
 | `local` | refused | loopback only, never an allowed host |
+| `tailnet` | refused | loopback, or a same-origin request on a `GTM_ALLOWED_HOSTS` host that Tailscale Serve marks with a login (never Funnel) |
 
 An `/api/*` path no plugin declares is refused, and pages always get the session rule.
 

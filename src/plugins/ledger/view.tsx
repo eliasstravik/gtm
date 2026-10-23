@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { apiUrl, duration, Link, Search, Status, time, useApi, useQuery, type TabProps } from "@eliasstravik/gtm/ui";
+import { apiUrl, duration, Link, Search, Status, time, useApi, useQuery, vercelUrl, type TabProps } from "@eliasstravik/gtm/ui";
 import "./runs.css";
 
 type Run = { id: string; sdkRunId: string | null; workflow: string; trigger: string; preview: boolean; status: string; reason: string | null;
   parentRunId: string | null; rootRunId: string; approvedMaxUsd: number | null; approvalNote: string | null; startedAt: string; finishedAt: string | null;
   costUsd: number; calls: number; unmetered: number };
-type Runs = { data: Run[]; hasMore: boolean; local: boolean };
+type Runs = { data: Run[]; hasMore: boolean; local: boolean; environment: string };
 
 const active = (run: { status: string }) => run.status === "admitted" || run.status === "running";
 const STATUSES = ["running", "completed", "failed", "refused", "start_failed", "cancelled", "unknown"];
@@ -26,13 +26,14 @@ function Duration({ run }: { run: Run }) {
   return <>{duration((run.finishedAt ? new Date(run.finishedAt).getTime() : now) - new Date(run.startedAt).getTime())}</>;
 }
 
-/** The run's own page: the local run inspector (only on this computer), or the run in Vercel's dashboard. */
-function runLink(run: Run, local: boolean) {
-  if (!run.sdkRunId) return null;
-  if (local && typeof location !== "undefined" && !["127.0.0.1", "localhost"].includes(location.hostname)) return null;
-  if (local) return { href: apiUrl(`inspector/run/${encodeURIComponent(run.sdkRunId)}`), label: "Open in Workflow ↗" };
-  const to = encodeURIComponent(`/[team]/[project]/workflows/runs/${run.sdkRunId}`);
-  return { href: `https://vercel.com/d?to=${to}&title=Workflow%20run`, label: "Open in Vercel ↗" };
+/** A run's page, or with no run all runs: the local run inspector (only on this computer), or Vercel's dashboard. */
+function runLink(d: Runs, sdkRunId?: string | null) {
+  if (sdkRunId === null) return null;
+  const id = sdkRunId && encodeURIComponent(sdkRunId);
+  if (d.local) return typeof location !== "undefined" && ["127.0.0.1", "localhost"].includes(location.hostname)
+    ? { href: apiUrl(id ? `inspector/run/${id}` : "inspector"), label: id ? "Open in Workflow ↗" : "All runs in Workflow ↗" } : null;
+  return id ? { href: vercelUrl(`/workflows/runs/${id}?environment=${d.environment}`, "Workflow run"), label: "Open in Vercel ↗" }
+    : { href: vercelUrl(`/workflows?environment=${d.environment}`, "Workflow runs"), label: "All runs in Vercel ↗" };
 }
 
 function Cost({ run }: { run: Run }) {
@@ -58,6 +59,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
   const state = useApi<Runs>(`ledger/runs?${query}`, (d) => (d.data.some(active) ? 3000 : 15_000));
   const names = useApi<{ workflows: { name: string }[] }>(workflow ? null : "workflows").data?.workflows ?? [];
   const d = state.data, filter = (k: string, v: string) => go({ [k]: v || undefined, before: undefined });
+  const all = d && runLink(d);
   const narrowed = ["q", "status", "period", "before", ...(workflow ? [] : ["workflow"])].some((k) => query.has(k));
   return <>
     {!workflow && <div className="title-row"><h1>Runs</h1></div>}
@@ -81,6 +83,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
           <option value="month">Past month</option>
         </select>
         <button type="button" onClick={state.reload}>Refresh</button>
+        {all && <a className="button" href={all.href} target="_blank" rel="noopener noreferrer">{all.label}</a>}
       </div>
       <Status state={state} />
       {d && <>
@@ -89,7 +92,7 @@ export function RunsView({ workflow }: { workflow?: string }) {
             <thead><tr>{!workflow && <th>Workflow</th>}<th>Started</th><th>Status</th><th>Duration</th><th>Cost</th><th>Approval</th><th>Details</th></tr></thead>
             <tbody>
               {d.data.map((r) => {
-                const link = runLink(r, d.local);
+                const link = runLink(d, r.sdkRunId);
                 return <tr key={r.id}>
                   {!workflow && <td><Link href={`/workflows/${encodeURIComponent(r.workflow)}?view=runs`}>{r.workflow}</Link><div className="muted" title={r.id}>{r.trigger === "external" ? "Started outside gtm" : r.id.slice(0, 8)}</div></td>}
                   <td><time tabIndex={0} dateTime={r.startedAt} title={new Date(r.startedAt).toString()}>{time(r.startedAt)}</time></td>

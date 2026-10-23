@@ -19,7 +19,7 @@ import type { CheckResult, GtmConfig, GtmPlugin } from "./types.js";
 export type CheckCtx = { dir: string; config: GtmConfig; plan: Plan; build: boolean; prod: boolean; plugin?: string; options?: unknown };
 type Report = { problems: string[]; warnings: string[]; info: string[] };
 
-const ACCESS = ["session", "automation", "cron", "signature", "local"];
+const ACCESS = ["session", "automation", "cron", "signature", "local", "tailnet"];
 const RESERVED = ["api", "_gtm", "_next", ".well-known"];
 const BUILD = "gtm check --build && gtm migrate && next build";
 const SYNC = "run `npx gtm sync`";
