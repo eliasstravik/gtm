@@ -12,7 +12,7 @@ const USAGE = `gtm: the open-source agent plugin that runs your GTM (npx gtm <co
   dev                       run the console and workflows on 127.0.0.1:$GTM_PORT (default 3000)
   check [--build] [--prod]  report problems with their fixes (read-only)
   docs [topic]              print the docs of this version
-  add <npm-or-git-spec>     install a plugin package and print the lines to add
+  add <name | npm-or-git>   add a first-party plugin (mdm) or install a plugin package; prints the lines to add
   remove <name>             print the lines that remove a plugin
   eject <name>              copy a package plugin into plugins/<name> to edit it
   diff <name>               what changed upstream since an eject`;

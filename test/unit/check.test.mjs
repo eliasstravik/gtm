@@ -188,3 +188,23 @@ test("an unknown plugin API version refuses to load, with a clear message", asyn
   const dir = project({ "gtm.config.ts": config({ plugins: [...defaults, "{ name: 'future', api: 2 }"] }) });
   await assert.rejects(loadConfig(dir), /The future plugin speaks plugin API 2; this gtm speaks API 1/);
 });
+
+test("mdm, the optional plugin: sync wires #gtm/mdm, its views, tables, skill and docs; check passes; it needs the ledger and the database", async () => {
+  const imports = 'import { mdm } from "@eliasstravik/gtm/mdm";';
+  let dir = project({ "gtm.config.ts": config({ imports, plugins: [...defaults, "mdm()"] }) });
+  assert.deepEqual((await check(dir)).errors, []);
+  assert.equal(JSON.parse(read(dir, "package.json")).imports["#gtm/mdm"], "./gtm/mdm.ts");
+  const binding = read(dir, "gtm/mdm.ts");
+  for (const name of ["upsertCompany", "upsertPerson", "upsertSignal", "findPerson", "merge", "known", "stale"]) assert.match(binding, new RegExp(`export const ${name}: Api\\["${name}"\\]`));
+  assert.match(binding, /import\("@eliasstravik\/gtm\/mdm\/step"\)/);
+  assert.match(read(dir, "gtm/slots/mdm.ts"), /"mdm": \{ plugin: "mdm"[\s\S]*"database": \{ plugin: "database"[\s\S]*"workflows": \{ plugin: "workflows"/);
+  const manifest = read(dir, "gtm/manifest.ts");
+  for (const needle of ['"path": "people"', '"path": "companies"', '"path": "signals"', '"name": "people"', '"schema": "gtm_mdm"', '"key": "mdm:mdm/people/:id"']) assert.ok(manifest.includes(needle), needle);
+  assert.match(read(dir, "gtm/views.tsx"), /import \{ PeopleView as C\d+ \} from "@eliasstravik\/gtm\/mdm\/views";/);
+  assert.match(read(dir, ".agents/skills/mdm-records/SKILL.md"), /^---\nname: mdm-records\n/);
+  assert.match(read(dir, "AGENTS.md"), /upsertPerson[\s\S]*stale\(record, fields/);
+  dir = project({ "gtm.config.ts": config({ imports, plugins: ["database()", "mdm()"] }) });
+  has((await check(dir)).errors, /The mdm plugin writesPeople, which needs the ledger, and no plugin provides it/);
+  dir = project({ "gtm.config.ts": config({ imports, plugins: ["ledger()", "mdm()"] }) });
+  has((await check(dir)).errors, /The mdm plugin needs the database slot/);
+});

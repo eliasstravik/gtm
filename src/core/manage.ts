@@ -2,17 +2,29 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { CONFIG, loadConfig, PACKAGE, packageDir, projectJiti } from "./config.js";
+import { CONFIG, loadConfig, OPTIONAL, PACKAGE, packageDir, projectJiti } from "./config.js";
 import { findProject, readJson } from "./project.js";
 import { listFiles, schemaOf, sync } from "./sync.js";
 import type { GtmPlugin } from "./types.js";
 
 const EJECT = ".gtm-eject";
 
-/** `gtm add <npm-or-git-spec>`: installs it pinned, then prints the lines to add to gtm.config.ts. */
+/**
+ * `gtm add <name | npm-or-git-spec>`: a first-party optional plugin (`mdm`) needs no install; a package is installed
+ * pinned. Either way it prints the lines to add to gtm.config.ts.
+ */
 export async function add(args: string[]): Promise<void> {
   const [spec] = args;
-  if (!spec || args.length > 1) throw new Error("Usage: gtm add <npm package[@version] | git url#<commit>>");
+  if (!spec || args.length > 1) throw new Error(`Usage: gtm add <${OPTIONAL.join(" | ")} | npm package[@version] | git url#<commit>>`);
+  const own = spec.startsWith(`${PACKAGE}/`) ? spec.slice(PACKAGE.length + 1) : spec;
+  if ((OPTIONAL as readonly string[]).includes(own)) {
+    const dir = findProject();
+    if ((await loadConfig(dir)).plugins.some((p) => p.name === own)) return void console.log(`${own} is already in ${CONFIG}.`);
+    console.log(`${own} ships with ${PACKAGE}; nothing to install. Add these lines to ${CONFIG}, then run \`npx gtm sync\` and \`npx gtm migrate\`:\n`);
+    console.log(`  import { ${own} } from "${PACKAGE}/${own}";`);
+    console.log(`  ${own}(),   // in plugins: [...]`);
+    return;
+  }
   const git = /^(git\+|github:|gitlab:|bitbucket:|https?:\/\/.*\.git|git@)/.test(spec) || /^[\w-]+\/[\w.-]+(#.*)?$/.test(spec);
   if (git && !/#[0-9a-f]{40}$/.test(spec)) throw new Error("A git plugin must name a commit: <url>#<40-character commit sha>, so every install gets the same code.");
   const dir = findProject();

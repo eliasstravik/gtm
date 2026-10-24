@@ -1,0 +1,17 @@
+/* People, Companies and Signals: one line per cell in the lists; a record's page in sections with its facts on top. */
+.mdm td { white-space: nowrap; }
+.mdm td:last-child, .mdm th:last-child { width: 100%; }
+.mdm-detail { max-width: 0; min-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdm-record h2 { margin: 32px 0 8px; }
+.mdm-table { overflow-x: auto; border-top: 1px solid var(--border); }
+.mdm-record td { white-space: nowrap; }
+.mdm-record td.mdm-value { white-space: normal; min-width: 24ch; }
+.mdm-record th, .mdm-record td { padding-inline: 12px; }
+.mdm-record .notice { padding: 8px 0; }
+.mdm-value { max-width: 60ch; overflow-wrap: break-word; }
+.mdm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 24px; margin: 8px 0 0; }
+.mdm-facts dt { font-size: 13px; color: var(--muted); }
+.mdm-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .mdm-record th, .mdm-record td { padding-inline: 8px; }
+}

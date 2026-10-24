@@ -594,3 +594,103 @@ ${read("workflows/index.ts", dir)}`.replace("export const workflows = {", `expor
   await stopDev();
   assertOk(await npm(["run", "build"], { dir }), "npm run build with the recipes");
 });
+
+test("mdm: gtm add mdm in a fresh project; two workflows with overlapping people and companies make one record each, and the second skips the first's enrichment", { timeout: 40 * MIN }, async () => {
+  assertOk(await init(["--company", "Mdm"]), "gtm init --company Mdm");
+  const dir = path.join(s.work, "gtm-mdm");
+  s.dir = dir;
+  const added = assertOk(await gtm(["add", "mdm"], { dir }), "gtm add mdm");
+  const [, importLine] = added.stdout.match(/^ {2}(import \{ mdm \} from "@eliasstravik\/gtm\/mdm";)$/m) ?? [];
+  assert.ok(importLine && /^ {2}mdm\(\), {3}\/\/ in plugins: \[\.\.\.\]$/m.test(added.stdout), added.stdout);
+  assert.ok(!JSON.parse(read("package.json", dir)).dependencies.mdm, "nothing installed");
+  write("gtm.config.ts", read("gtm.config.ts", dir).replace('import { console } from "@eliasstravik/gtm/console";', (m) => `${m}\n${importLine}`)
+    .replace("    console(),\n", "    console(),\n    mdm(),\n"), dir);
+  assert.match((await gtm(["add", "mdm"], { dir })).stdout, /mdm is already in gtm\.config\.ts/);
+  assertOk(await gtm(["sync"], { dir }), "gtm sync");
+  assert.match((await gtm(["docs", "mdm"], { dir })).stdout, /^# MDM: people, companies and signals/);
+
+  write("workflows/leads.ts", `import { stale, upsertCompany, upsertPerson, upsertSignal } from "#gtm/mdm";
+
+type Lead = { email?: string; linkedin?: string; name: string; domain: string };
+
+/** The paid lookup each workflow would make: it logs every call, so a skipped one shows. */
+async function lookUp(domain: string) {
+  "use step";
+  const { appendFileSync } = await import("node:fs");
+  appendFileSync(".gtm/vendor-calls.log", domain + "\\n");
+  return { industry: "Industry of " + domain, employees: domain.length };
+}
+
+async function collect(leads: Lead[], source: string) {
+  const enriched: string[] = [], skipped: string[] = [], people: string[] = [];
+  for (const lead of leads) {
+    const person = await upsertPerson({ email: lead.email, linkedin: lead.linkedin, name: lead.name, company: { domain: lead.domain } }, { source });
+    people.push(person.id);
+    const company = { type: "company" as const, id: person.companyId! };
+    if ((await stale(company, ["industry", "employees"], { maxAgeDays: 30 })).length) {
+      await upsertCompany({ id: company.id, fields: await lookUp(lead.domain) }, { source: "vendor" });
+      enriched.push(lead.domain);
+    } else skipped.push(lead.domain);
+    await upsertSignal({ about: company, type: "hiring", key: "careers-page", data: { seenBy: source } });
+  }
+  return { enriched, skipped, people };
+}
+
+export async function findLeads(input: { leads: Lead[] }) {
+  "use workflow";
+  return collect(input.leads, "lead-list");
+}
+
+export async function eventAttendees(input: { leads: Lead[] }) {
+  "use workflow";
+  return collect(input.leads, "event-list");
+}
+`, dir);
+  write("workflows/index.ts", `import { eventAttendees, findLeads } from "./leads";\n${read("workflows/index.ts", dir)}`
+    .replace("export const workflows = {", 'export const workflows = {\n  "find-leads": findLeads,\n  "event-attendees": eventAttendees,'), dir);
+  assertOk(await gtm(["check"], { dir }), "gtm check with mdm");
+
+  await startDev(dir);
+  for (const p of ["/people", "/companies", "/signals"]) assert.equal((await get(p)).status, 200, p);
+  assert.deepEqual((await json("/api/gtm/mdm/people")).data, []);
+  assert.ok((await json("/api/gtm/data")).tables.some((x) => x.name === "gtm_mdm.people" && x.label === "MDM: people"));
+
+  const first = await gtmRun(["find-leads", "--input", JSON.stringify({ leads: [
+    { email: "jane@acme.example", name: "Jane Doe", domain: "acme.example" },
+    { email: "bob@globex.example", name: "Bob", domain: "globex.example" },
+    { email: "ann@acme.example", name: "Ann", domain: "https://acme.example/team" },
+  ] })]);
+  assert.equal(first.out?.status, "completed", tail(first.output));
+  assert.deepEqual([first.out.returnValue.enriched, first.out.returnValue.skipped], [["acme.example", "globex.example"], ["https://acme.example/team"]]);
+  const second = await gtmRun(["event-attendees", "--input", JSON.stringify({ leads: [
+    { email: "JANE@acme.example", linkedin: "https://www.linkedin.com/in/jane-doe/", name: "Jane Doe", domain: "www.acme.example" },
+    { email: "carol@globex.example", name: "Carol", domain: "https://www.globex.example/" },
+    { linkedin: "linkedin.com/in/dan", name: "Dan", domain: "initech.example" },
+  ] })]);
+  assert.equal(second.out?.status, "completed", tail(second.output));
+  assert.deepEqual([second.out.returnValue.enriched, second.out.returnValue.skipped], [["initech.example"], ["www.acme.example", "https://www.globex.example/"]],
+    "the second run sees the first run's enrichment and skips it");
+  assert.equal(second.out.returnValue.people[0], first.out.returnValue.people[0], "Jane is one person in both runs");
+  assert.deepEqual(read(".gtm/vendor-calls.log", dir).trim().split("\n"), ["acme.example", "globex.example", "initech.example"], "each company enriched once");
+
+  const people = (await json("/api/gtm/mdm/people")).data, companies = (await json("/api/gtm/mdm/companies")).data;
+  assert.deepEqual(people.map((p) => p.name).sort(), ["Ann", "Bob", "Carol", "Dan", "Jane Doe"]);
+  assert.deepEqual(companies.map((c) => c.domain).sort(), ["acme.example", "globex.example", "initech.example"]);
+  assert.deepEqual(Object.fromEntries(companies.map((c) => [c.domain, c.people])), { "acme.example": 2, "globex.example": 2, "initech.example": 1 });
+  const acme = companies.find((c) => c.domain === "acme.example");
+  const page = await json(`/api/gtm/mdm/companies/${acme.id}`);
+  const industry = page.fields.find((f) => f.field === "industry");
+  assert.deepEqual([industry.value, industry.source, industry.workflow], ["Industry of acme.example", "vendor", "find-leads"]);
+  assert.match(industry.runId, /^[0-9a-f-]{36}$/, "the ledger run that set it");
+  assert.equal((await sql(dir, s.dbUrl, "select workflow from gtm_ledger.runs where id = $1", [industry.runId]))[0].workflow, "find-leads");
+  assert.deepEqual(page.signals.map((x) => [x.type, x.source, x.data.seenBy]), [["hiring", "find-leads", "event-list"]], "one signal, found by both runs");
+  assert.equal((await json("/api/gtm/mdm/signals")).data.length, 3);
+  const jane = people.find((p) => p.name === "Jane Doe");
+  const janePage = await json(`/api/gtm/mdm/people/${jane.id}`);
+  assert.deepEqual(janePage.keys.map((k) => [k.key, k.value, k.source]), [["email", "jane@acme.example", "lead-list"], ["linkedin", "linkedin.com/in/jane-doe", "event-list"]]);
+  for (const p of [`/people/${jane.id}`, `/companies/${acme.id}`, "/signals?type=hiring"]) assert.equal((await get(p)).status, 200, p);
+  assert.equal((await get("/api/gtm/mdm/people/00000000-0000-0000-0000-000000000000")).status, 404);
+  assertOk(await gtm(["check"], { dir }), "gtm check while dev runs");
+  await stopDev();
+  assertOk(await npm(["run", "build"], { dir }), "npm run build with mdm");
+});

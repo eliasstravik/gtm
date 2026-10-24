@@ -53,6 +53,12 @@ project, there is no telemetry, and the keys and services are the company's own.
 | `connections` | which keys are set, and `gtm connections set` for local ones |
 | `console` | the console's frame, for every plugin's pages |
 
+Optional plugins ship in the package too and join a project with `npx gtm add <name>`:
+
+| Plugin | What it does |
+| --- | --- |
+| `mdm` | one de-duplicated set of people, companies and signals that every workflow matches to, with where each field came from, so each record is enriched once; People, Companies and Signals views |
+
 A plugin can add tables, console pages and sidebar items, workflow tabs, routes with an access rule, CLI commands,
 skills, AGENTS.md lines, connection names, checks and docs, without editing this package. `gtm sync` turns the list
 into committed files, `gtm check` runs first in every build, and `gtm add`, `remove`, `eject` and `diff` manage
@@ -80,6 +86,7 @@ The docs match the installed version: `npx gtm docs [topic]` in a project.
 | [connections](src/plugins/connections/docs/connections.md) | keys, locally and live |
 | [context](src/plugins/context/docs/context.md) | the basics at setup, and a suggested layout for company facts |
 | [webhooks](src/plugins/workflows/docs/webhooks.md) | inbound webhooks |
+| [mdm](src/plugins/mdm/docs/mdm.md) | people, companies and signals: matching, merging, where each field came from, the contract for other plugins |
 | [recipes](docs/recipes.md) | ready-made workflows to copy |
 | [interaction](docs/interaction.md) | how agents talk to the GTM team |
 | [local](docs/local.md), [deploy](docs/deploy.md), [upgrade](docs/upgrade.md) | working locally, going live, upgrading from 0.0.x |
@@ -103,11 +110,12 @@ Each starts as an optional plugin, and joins the defaults only by the entry rule
 | --- | --- |
 | An MCP server for gtm | agents outside a CLI need to work through gtm |
 | A sequencer slot with a local test channel, a send guard, an opt-out list and `gtm ledger forget` | sending work starts |
-| An in-app CRM: tables and pages inside gtm with a small read contract for the send guard | it is built |
+| An in-app CRM: tables and pages inside gtm with a small read contract for the send guard, on mdm's people and companies | it is built |
+| More mdm record types (job postings first), and mdm joining the defaults | workflows need them; mdm meets the entry rule |
 | A chat channel plugin | demand, and a way to verify who approves |
 | Signing in with an existing coding-agent subscription for local AI steps | a local AI path without `claude` or `codex` is needed |
 | Keys outside the project folder, and OAuth connections | vendors need OAuth, or local keys must leave the folder |
-| Enrichment, other engines, vendor plugins | demand; vendors or the community build them |
+| Enrichment, other engines, vendor plugins (writing to mdm) | demand; vendors or the community build them |
 | A practice arena for outreach | a backtest on real logs beats a simple baseline at predicting past reply rates |
 | A sell-to-me endpoint | a B2B quote standard exists and buyers query vendors through it in production |
 
@@ -119,7 +127,7 @@ Not planned: a hosted gtm service run by this project.
 npm ci
 npm run build && npm run check        # typecheck and unit tests
 npm test                              # unit tests, then the acceptance suite against a packed tarball
-GTM_TEST_PG_URL=postgres://… node --test test/ledger/*.test.mjs   # the ledger on real Postgres and on PGlite
+GTM_TEST_PG_URL=postgres://… node --test test/ledger/*.test.mjs test/mdm/*.test.mjs   # the ledger and mdm on real Postgres and on PGlite
 npm run lines                         # line counts per plugin against their budgets
 ```
 
