@@ -125,18 +125,38 @@ export async function suite({ url, concurrent }) {
     assert.equal((await mdm.upsertSignal(visit, by("b"))).created, false, "without a key, the time is the key");
     assert.equal((await mdm.upsertSignal({ ...visit, at: "2026-03-02T11:00:00Z" }, by("b"))).created, true);
     assert.deepEqual((await mdm.signals(p, { type: "site_visit" })).map((s) => s.occurredAt), ["2026-03-02T11:00:00.000Z", "2026-03-02T10:00:00.000Z"]);
+    const posting = await mdm.upsertSignal({ about: p, type: "job_posting", key: "https://jobs.example/9", data: { title: "Engineer", company: "Acme", email: "x", name: "y" } }, by("jobs"));
+    assert.deepEqual(posting.data, { title: "Engineer", company: "Acme", email: "x", name: "y" }, "signal data takes any detail names");
+    await assert.rejects(mdm.upsertSignal({ about: p, type: "x", data: [1] }, by("t")), /A signal's data is an object/);
     await assert.rejects(mdm.upsertSignal({ about: p, type: "Job Change" }, by("t")), /not a signal type/);
     await assert.rejects(mdm.upsertSignal({ about: { type: "person", id: randomUUID() }, type: "x" }, by("t")), /No person has the id/);
+  });
+
+  test("known and stale: a person's email, LinkedIn profile and ids are known from when they were first stored", async () => {
+    const d = fresh(), run = randomUUID();
+    const p = await mdm.upsertPerson({ email: `jane@${d}`, title: "Engineer" }, by("email-vendor", "find", run));
+    const k = await mdm.known(p, ["email", "title", "linkedin"]);
+    assert.deepEqual(Object.keys(k), ["email", "title"]);
+    assert.deepEqual([k.email.value, k.email.source, k.email.workflow, k.email.runId], [`jane@${d}`, "email-vendor", "find", run]);
+    assert.deepEqual(await mdm.stale(p, ["email", "linkedin"]), ["linkedin"]);
+    await mdm.upsertPerson({ email: `jane@${d}`, linkedin: `linkedin.com/in/jane-${d}`, ids: { crm: 7 } }, by("crawler"));
+    await mdm.upsertPerson({ email: `jane.doe@${d}`, linkedin: `linkedin.com/in/jane-${d}` }, by("other"));
+    const all = await mdm.known(p);
+    assert.deepEqual([all.email.value, all.email.source, all.linkedin.source, all["id:crm"].value], [`jane@${d}`, "email-vendor", "crawler", "7"], "the first email stays the known one");
+    assert.deepEqual(await mdm.stale(p, ["email", "linkedin", "id:crm"]), []);
+    await q("update gtm_mdm.keys set created_at = now() - interval '40 days' where record_id = $1 and key = 'email'", [p.id]);
+    assert.deepEqual(await mdm.stale(p, ["email", "linkedin"], { maxAgeDays: 30 }), ["email"]);
   });
 
   test("known and stale: each field's value, source, workflow, run and time; nothing found counts as known; old fields go stale", async () => {
     const run = randomUUID();
     const c = await mdm.upsertCompany({ domain: fresh(), name: "Initech", fields: { industry: "Software", funding: null } }, by("website", "enrich", run));
     const k = await mdm.known(c);
-    assert.deepEqual(Object.keys(k).sort(), ["funding", "industry", "name"]);
+    assert.deepEqual(Object.keys(k), ["domain", "funding", "industry", "name"], "keys count as known");
     assert.deepEqual([k.industry.value, k.industry.source, k.industry.workflow, k.industry.runId, k.funding.value], ["Software", "website", "enrich", run, null]);
     assert.ok(Date.now() - Date.parse(k.industry.setAt) < 60_000);
     assert.deepEqual(await mdm.stale(c, ["industry", "funding", "employees"]), ["employees"]);
+    assert.deepEqual(await mdm.stale(c, ["constructor", "toString", "industry"]), ["constructor", "toString"], "names an object inherits are unknown too");
     assert.deepEqual(Object.keys(await mdm.known(c, ["industry", "nope"])), ["industry"]);
     await q("update gtm_mdm.fields set set_at = now() - interval '40 days' where record_id = $1 and field = 'industry'", [c.id]);
     assert.deepEqual(await mdm.stale(c, ["industry", "funding"], { maxAgeDays: 30 }), ["industry"]);

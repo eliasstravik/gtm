@@ -28,9 +28,14 @@ const typeOf = (ref: Ref | undefined): RecordType => {
 
 /** `fields` as checked [name, JSON value] pairs; undefined values are left out. */
 function fieldsOf(fields: Record<string, unknown> | undefined): [string, unknown][] {
-  if (fields == null) return [];
-  if (typeof fields !== "object" || Array.isArray(fields)) throw bad("fields is an object of field name → value.");
-  return Object.entries(fields).filter(([, v]) => v !== undefined).map(([k, v]) => [fieldName(k), JSON.parse(JSON.stringify(v) ?? "null")]);
+  return entries(fields, "fields").map(([k, v]) => [fieldName(k), v]);
+}
+
+/** An object's [name, JSON value] pairs; undefined values are left out. */
+function entries(value: Record<string, unknown> | undefined, what: string): [string, unknown][] {
+  if (value == null) return [];
+  if (typeof value !== "object" || Array.isArray(value)) throw bad(`${what} is an object of name → value.`);
+  return Object.entries(value).filter(([, v]) => v !== undefined).map(([k, v]) => [k, JSON.parse(JSON.stringify(v) ?? "null")]);
 }
 
 function originOf(o: Origin): Origin {
@@ -144,12 +149,20 @@ export default function provide(ctx: Ctx): MdmSlotV1 {
     return r ? load<T>(type, r) : null;
   };
 
+  /** Every known field of a record, its keys (email, domain, linkedin, id:<system>; the first of each) among them. */
   const known = async (ref: Ref, only?: string[]): Promise<Record<string, Known>> => {
     const r = await live(ref);
     if (only && !only.length) return {};
-    const filter = only ? sql`and field in (${sql.join(only.map((f) => sql`${String(f)}`), sql`, `)})` : sql``;
-    const found = await rows(sql`select field, value, source, workflow, run_id, set_at from gtm_mdm.fields where record_id = ${r.id} ${filter} order by field`);
-    return Object.fromEntries(found.map((f) => [f.field, { value: f.value, source: f.source, workflow: f.workflow, runId: f.run_id, setAt: iso(f.set_at)! }]));
+    const pick = (col: string) => (only ? sql`and ${sql.raw(col)} in (${sql.join(only.map((f) => sql`${String(f)}`), sql`, `)})` : sql``);
+    const [keys, fields] = await Promise.all([
+      rows(sql`select distinct on (key) key, value, source, workflow, run_id, created_at from gtm_mdm.keys where record_id = ${r.id} ${pick("key")}
+        order by key, created_at, value`),
+      rows(sql`select field, value, source, workflow, run_id, set_at from gtm_mdm.fields where record_id = ${r.id} ${pick("field")} order by field`),
+    ]);
+    return Object.fromEntries([
+      ...keys.map((k) => [k.key, { value: k.value, source: k.source, workflow: k.workflow, runId: k.run_id, setAt: iso(k.created_at)! }]),
+      ...fields.map((f) => [f.field, { value: f.value, source: f.source, workflow: f.workflow, runId: f.run_id, setAt: iso(f.set_at)! }]),
+    ].sort(([a], [b]) => (a < b ? -1 : 1)));
   };
 
   return {
@@ -162,14 +175,14 @@ export default function provide(ctx: Ctx): MdmSlotV1 {
     async stale(ref, fields, opts = {}) {
       const have = await known(ref, fields), days = opts.maxAgeDays;
       const cutoff = days == null ? -Infinity : Date.now() - days * 86_400_000;
-      return fields.filter((f) => !have[f] || Date.parse(have[f].setAt) < cutoff);
+      return fields.filter((f) => !Object.hasOwn(have, f) || Date.parse(have[f].setAt) < cutoff);
     },
 
     async upsertSignal(input, origin) {
       const o = originOf(origin), type = signalType(input?.type);
       const at = input.at == null ? new Date() : new Date(input.at);
       if (Number.isNaN(at.getTime())) throw bad(`"${String(input.at)}" is not a time.`);
-      const key = text(input.key) ?? at.toISOString(), data = fieldsOf(input.data);
+      const key = text(input.key) ?? at.toISOString(), data = entries(input.data, "A signal's data");
       return write(async (tx) => {
         const about = await live(input.about, tx), kind = typeOf(input.about);
         const same = await one(sql`select id from gtm_mdm.signals where record_id = ${about.id} and type = ${type} and key = ${key}`, tx);

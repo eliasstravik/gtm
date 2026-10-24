@@ -69,7 +69,7 @@ export interface MdmSlotV1 {
   findPerson(by: Omit<PersonInput, "name" | "title" | "company" | "fields">): Promise<Person | null>;
   /** Folds `drop` into `keep` (same type): keys, fields, signals and links move; `keep`'s values win; `drop`'s id then finds `keep`. */
   merge(keep: Ref, drop: Ref): Promise<Person | Company>;
-  /** Every known field of a record, or only `fields`. */
+  /** Every known field of a record, or only `fields`; its keys count too (`email`, `domain`, `linkedin`, `id:<system>`). */
   known(ref: Ref, fields?: string[]): Promise<Record<string, Known>>;
   /** Which of `fields` are unknown, or were set more than `maxAgeDays` ago (when given). */
   stale(ref: Ref, fields: string[], opts?: { maxAgeDays?: number }): Promise<string[]>;

@@ -48,7 +48,7 @@ Each is one step, so call them from workflow code or inside your own steps.
 | `upsertSignal({ about, type, at?, key?, data? }, { source })` | the signal, stored once per record, type and key; `created` |
 | `findCompany(keys)`, `findPerson(keys)` | the record by any key or id, or null |
 | `merge(keep, drop)` | the kept record |
-| `known(record, fields?)` | `{ [field]: { value, source, workflow, runId, setAt } }` |
+| `known(record, fields?)` | `{ [field]: { value, source, workflow, runId, setAt } }`, keys included (`email`, `domain`, `linkedin`, `id:<system>`: the first of each) |
 | `stale(record, fields, { maxAgeDays? })` | the fields to enrich: unknown ones, and ones set longer ago than `maxAgeDays` |
 | `signals(record, { type?, limit? })` | its signals, newest first |
 
@@ -95,7 +95,8 @@ export async function importLeads(input: { leads: { email: string; name: string;
 A signal is something that happened to a person or company: `job_change`, `job_posting`, `funding_round`,
 `site_visit`, or any lowercase type. `about` is the record it is about, `at` when it happened (default now), and `key`
 what makes it the same signal when found again: the posting's URL, the round's name, the vendor's event id. Without a
-key, `at` is the key. Found again, its `data` is merged in and the earliest `at` stays.
+key, `at` is the key. `data` holds any details (`{ title, company, url }`). Found again, its `data` is merged in and the
+earliest `at` stays.
 
 ## Merging
 

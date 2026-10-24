@@ -21,7 +21,7 @@ export type Api = {
   findPerson(by: Omit<PersonInput, "name" | "title" | "company" | "fields">): Promise<Person | null>;
   /** Folds `drop` into `keep`; `keep`'s values win, and `drop`'s id finds `keep` from then on. */
   merge(keep: Ref, drop: Ref): Promise<Person | Company>;
-  /** What is known about a record: each field's value, source and when it was set. */
+  /** What is known about a record: each field's and key's value, source and when it was set. */
   known(ref: Ref, fields?: string[]): Promise<Record<string, Known>>;
   /** The fields to enrich: unknown ones, and with `maxAgeDays` ones set longer ago than that. */
   stale(ref: Ref, fields: string[], opts?: { maxAgeDays?: number }): Promise<string[]>;
