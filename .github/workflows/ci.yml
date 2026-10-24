@@ -1,4 +1,4 @@
-# Build, unit and check-rule tests, the ledger on real Postgres (a service container started before the firewall),
+# Build, unit and check-rule tests, the ledger and mdm on real Postgres (a service container started before the firewall),
 # `npm pack`, then the acceptance suite against that tarball inside a firewall that allows only the npm registry. No
 # publish steps.
 name: ci
@@ -36,10 +36,10 @@ jobs:
       - name: Typecheck, unit tests and every gtm check rule
         run: npm run check
 
-      - name: The ledger on Postgres 16 and on PGlite
+      - name: The ledger and mdm on Postgres 16 and on PGlite
         env:
           GTM_TEST_PG_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-        run: node --test test/ledger/*.test.mjs
+        run: node --test test/ledger/*.test.mjs test/mdm/*.test.mjs
 
       - name: Line budgets
         run: npm run lines

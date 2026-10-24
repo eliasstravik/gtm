@@ -22,9 +22,18 @@ Delete a line to remove a plugin, then run `npx gtm sync`; `npx gtm check` names
 smallest working set is `database`, `ledger` and `workflows`. Without `console`, sync writes a plain layout and a
 `notFound()` page. Without `context`, `agent({ skills })` still reads `.agents/skills`.
 
+## Optional plugins
+
+These ship in the package too, but no project gets them until it adds one with `npx gtm add <name>`:
+
+| Plugin | Provides / needs | What it does |
+| --- | --- | --- |
+| `mdm` | provides `mdm`; needs `database`, the ledger; uses `workflows`; writes people | one de-duplicated set of people, companies and signals, where each field came from, `#gtm/mdm`, People, Companies, Signals (docs: mdm) |
+
 ## Adding and changing plugins
 
 ```sh
+npx gtm add <name>                                           # an optional plugin above: prints the lines to add
 npx gtm add <npm package[@version] | git url#<commit sha>>   # installs it pinned, prints the lines to add
 npx gtm remove <name>                                        # prints the lines to delete; never drops tables
 npx gtm eject <name>                                         # copies a default plugin into plugins/<name> to edit it
@@ -98,7 +107,7 @@ An `/api/*` path no plugin declares is refused, and pages always get the session
 
 Cross-plugin behavior goes only through slots: `ctx.get("ledger").reserve(…)`, never an import of another plugin's
 code (type imports are fine). The slot interfaces are `DatabaseSlotV1`, `LedgerSlotV1` and `WorkflowsSlotV1`, from
-`@eliasstravik/gtm`. A replacement for a default keeps its `name` and at least its `runtime.exports`; a slot plugin
+`@eliasstravik/gtm`; an optional plugin's comes with it (`MdmSlotV1` from `@eliasstravik/gtm/mdm`). A replacement for a default keeps its `name` and at least its `runtime.exports`; a slot plugin
 can be swapped for any plugin that provides the same slot interface.
 
 For a plugin with `runtime`, sync writes `gtm/<name>.ts`: workflow-safe wrappers around `bind(rt)`, plus generated

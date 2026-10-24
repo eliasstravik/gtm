@@ -10,6 +10,8 @@ export const CONFIG = "gtm.config.ts";
 export const PACKAGE = "@eliasstravik/gtm";
 /** The seven default plugins, in the order `gtm init` writes them. */
 export const BASE = ["database", "ledger", "workflows", "ai", "context", "connections", "console"] as const;
+/** First-party plugins that ship in the package but join a project only through `gtm add <name>`. */
+export const OPTIONAL = ["mdm"] as const;
 
 /** A jiti that resolves from the project (so `@eliasstravik/gtm/*` is the installed package) and caches nothing. */
 export function projectJiti(dir: string) {
@@ -39,6 +41,11 @@ export async function loadConfig(dir: string): Promise<GtmConfig> {
 /** A fresh base plugin from the installed package, as `gtm.config.ts` would get it with default options. */
 export async function basePlugin(dir: string, name: string): Promise<GtmPlugin | undefined> {
   if (!(BASE as readonly string[]).includes(name)) return undefined;
+  return firstParty(dir, name);
+}
+
+/** A default or optional plugin of the installed package, with default options. */
+export async function firstParty(dir: string, name: string): Promise<GtmPlugin | undefined> {
   const mod = (await projectJiti(dir).import(`${PACKAGE}/${name}`)) as Record<string, () => GtmPlugin>;
   return mod[name]?.();
 }

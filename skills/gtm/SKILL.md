@@ -51,6 +51,7 @@ Talk by [the interaction rules](references/interaction.md); reproduce [the dialo
    | Add a connection or API key | connections |
    | Go live on Vercel | deploy |
    | Inbound webhooks | webhooks |
+   | Keep people, companies or signals in one place, or enrich each record once (`npx gtm add mdm`) | mdm |
 
 4. Company code imports plugins only as `#gtm/<plugin>` (`#gtm/database`, `#gtm/ai`, `#gtm/workflows`,
    `#gtm/ledger`). After changing `gtm.config.ts` or a local plugin, run `npx gtm sync`; never edit `gtm/` or the shims.
